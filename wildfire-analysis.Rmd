@@ -9,4 +9,225 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+```{r load libraries and functions, message=FALSE, warning=FALSE}
+#libraries
+library(tidyverse)
+library(sf)
+library(sp)
+library(viridis)
+library(spatstat)
+library(rgdal)
+library(raster)
+library(spdep)
+library(FNN)
+library(grid)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(tidycensus)
+library(mapview)
+
+root.dir = "https://raw.githubusercontent.com/jeffstern/MUSA508-final"
+
+
+# nn function
+nn_function <- function(measureFrom,measureTo,k) {
+  measureFrom_Matrix <-
+    as.matrix(measureFrom)
+  measureTo_Matrix <-
+    as.matrix(measureTo)
+  nn <-   
+    get.knnx(measureTo, measureFrom, k)$nn.dist
+    output <-
+      as.data.frame(nn) %>%
+      rownames_to_column(var = "thisPoint") %>%
+      gather(points, point_distance, V1:ncol(.)) %>%
+      arrange(as.numeric(thisPoint)) %>%
+      group_by(thisPoint) %>%
+      summarize(pointDistance = mean(point_distance)) %>%
+      arrange(as.numeric(thisPoint)) %>% 
+      dplyr::select(-thisPoint) %>%
+      pull()
+  
+  return(output)  
+}
+
+#r cross validate function
+crossValidate <- function(dataset, id, dependentVariable, indVariables) {
+
+allPredictions <- data.frame()
+cvID_list <- unique(dataset[[id]])
+
+for (i in cvID_list) {
+
+  thisFold <- i
+  cat("This hold out fold is", thisFold, "\n")
+
+  fold.train <- filter(dataset, dataset[[id]] != thisFold) %>% as.data.frame() %>% 
+                dplyr::select(id, geometry, indVariables, dependentVariable)
+  fold.test  <- filter(dataset, dataset[[id]] == thisFold) %>% as.data.frame() %>% 
+                dplyr::select(id, geometry, indVariables, dependentVariable)
+  
+  regression <-
+    glm(count_theftsFromAuto ~ ., family = "poisson", 
+      data = fold.train %>% 
+      dplyr::select(-geometry, -id))
+  
+  thisPrediction <- 
+    mutate(fold.test, Prediction = predict(regression, fold.test, type = "response"))
+    
+  allPredictions <-
+    rbind(allPredictions, thisPrediction)
+    
+  }
+  return(st_sf(allPredictions))
+}
+
+#quintile breaks
+qBr <- function(df, variable, rnd) {
+  if (missing(rnd)) {
+    as.character(quantile(round(df[[variable]],0),
+                          c(.01,.2,.4,.6,.8), na.rm=T))
+  } else if (rnd == FALSE | rnd == F) {
+    as.character(formatC(quantile(df[[variable]]), digits = 3),
+                 c(.01,.2,.4,.6,.8), na.rm=T)
+  }
+}
+
+q5 <- function(variable) {as.factor(ntile(variable, 5))}
+
+#themes and palettes
+mapTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 14,colour = "black"),
+    plot.subtitle=element_text(face="italic"),
+    plot.caption=element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.text.x = element_text(size = 14))
+}
+
+plotTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 14,colour = "black"),
+    plot.subtitle = element_text(face="italic"),
+    plot.caption = element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),
+    panel.grid.major = element_line("grey80", size = 0.1),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.background = element_rect(fill = "grey80", color = "white"),
+    strip.text = element_text(size=12),
+    axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    plot.background = element_blank(),
+    legend.background = element_blank(),
+    legend.title = element_text(colour = "black", face = "italic"),
+    legend.text = element_text(colour = "black", face = "italic"),
+    strip.text.x = element_text(size = 14)
+  )
+}
+
+```
+
+# Data imports and initial exploration - ALL OF CALIFORNIA
+
+```{r read in california counties - boundaries}
+counties <- st_read("https://opendata.arcgis.com/datasets/8713ced9b78a4abb97dc130a691a8695_0.geojson")
+
+soCal_counties <- counties %>%
+  filter(COUNTY_NAME == "Los Angeles" | COUNTY_NAME == "Santa Barbara" | COUNTY_NAME == "Orange" | COUNTY_NAME == "San Bernardino" | COUNTY_NAME == "San Diego" | COUNTY_NAME == "Riverside" | COUNTY_NAME == "Ventura" | COUNTY_NAME == "Imperial" | COUNTY_NAME == "Kern" | COUNTY_NAME == "San Luis Obispo") %>% filter(OBJECTID < 59)
+
+
+
+ggplot()+
+  geom_sf(data=soCal_counties)
+```
+
+```{r import fire perimiters data geodatabase, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+## FOUND DATA ON CALIFORNIA'S OPEN DATA SITE AS GEOJSON INSTEAD
+# The fire perimeters database is an ESRI ArcGIS file geodatabase with three data layers (feature classes):
+## 1. A layer depicting wildfire perimeters from contributing agencies current as of the previous fire year (2019);
+## 2. A layer depicting prescribed fires supplied from contributing agencies current as of the previous fire year (2019);
+## 3. A layer representing non-prescribed fire fuel reduction projects that were initially included in the database. Fuels reduction projects that are non prescribed fire are no longer included.
+## SOURCE: https://frap.fire.ca.gov/frap-projects/fire-perimeters/
+
+# reading in layers from geodatabase
+#firep19_1 <- st_read(dsn="data/fire19_1.gdb", layer="firep19_1") %>% st_transform(st_crs(counties))
+#rxburn19_1 <- st_read(dsn="data/fire19_1.gdb", layer="rxburn19_1") %>% st_transform(st_crs(counties))
+#Non_RXFire_Legacy13_2 <- st_read(dsn="data/fire19_1.gdb", layer="Non_RXFire_Legacy13_2") %>% #st_transform(st_crs(counties))
+
+```
+
+```{r read in fire perimeters, message=FALSE, warning=FALSE}
+# filtering for 20 years, for now
+firePerimeters <- st_read("https://opendata.arcgis.com/datasets/4fb94e78686d4932ac71bbe561e7cb9b_0.geojson") %>%
+   st_transform(st_crs(soCal_counties))
+
+```
+```{r}
+clip <- 
+  st_within(firePerimeters, soCal_counties)
+
+```
+
+
+```{r fire perims map, message=FALSE, warning=FALSE}
+ggplot()+
+    geom_sf(data=counties, color="grey", size=0.5)+
+  geom_sf(data=firePerimiters, fill="red") + mapTheme()
+
+```
+
+```{r historical prescribed burns map, message=FALSE, warning=FALSE}
+prescribedBurns <- st_read("https://opendata.arcgis.com/datasets/4fb94e78686d4932ac71bbe561e7cb9b_1.geojson")
+```
+ 
+ 
+```{r read in fire threat areas, message=FALSE, warning=FALSE}
+# fire threat areas
+# used arcmap to convert raster to vector (polygons)
+fireThreatClasses <- st_read("data/fire_threat_classes.shp")
+
+# filter to only include gridcode 3, 4, 5 (high, very high, and extreme) - takes FOREVER
+fireThreatClasses <- fireThreatClasses %>%
+  filter(gridcode > 2) %>%
+   st_transform(st_crs(counties))
+
+```
+
+
+```{r mapping fire threat areas, message=FALSE, warning=FALSE}
+## this map takes FOREVER to load. Probably would be good to save fireThreatClasses filtered as an rds and then load back in locally. 
+ggplot()+
+  geom_sf(data=counties) +
+  geom_sf(data=fireThreatClasses, aes(color=gridcode))
+
+#lighter blue indicates extreme risk areas; clear that focusing on southern cal might be good
+
+```
+
+
+ 
+```{r load calfire facilities point data}
+# california facilities for combating wildfires, point data
+calfireFacilities <- st_read("https://opendata.arcgis.com/datasets/1c8a93cac92f418e98a8fa6a2eaf4265_0.geojson") %>% st_transform(st_crs(counties))
+```
+
+# Data - Southern California [TO DO]
+## need to clip state-wide data to southern california. will do this in arcmap later.
+## then, pull in ACS data for southern california by tract.
+
+```{r}
+# This Existing Vegetation (Eveg) polygon feature class is a CALVEG (Classification and Assessment with LANDSAT of Visible Ecological Groupings) map product from a scale of 1:24,000 to 1:100,000 for CALVEG Zone 7, the South Coast. Source imagery for this layer ranges from the year 2002 to 2010. The CALVEG classification system was used for vegetation typing and crosswalked to other classification systems in this database including the California Wildlife Habitat Relationship System (CWHR)
+
+southcoast_CalVeg <- st_read(dsn="data/S_USA.EVMid_R05_SouCoast.gdb", layer="EVMid_R05_SouCoast")
+```
