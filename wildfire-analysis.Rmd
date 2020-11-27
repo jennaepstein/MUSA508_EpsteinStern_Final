@@ -231,3 +231,32 @@ calfireFacilities <- st_read("https://opendata.arcgis.com/datasets/1c8a93cac92f4
 
 southcoast_CalVeg <- st_read(dsn="data/S_USA.EVMid_R05_SouCoast.gdb", layer="EVMid_R05_SouCoast")
 ```
+
+
+## TODO: CREATE AN AT-NEED POPULATION SCORE
+```{r atNeedPopulations}
+
+## I'm not sure if there's a dependent variable that can be used here...thinking it may just need to be a composite score of a bunch of things that we know "contribute to low levels of disaster preparedness"
+
+# Studies have found that variables such as poor financial security, disability or ethnic minority status also contribute to low levels of disaster preparedness.. Many of these attributes cluster together, exacerbating risk 
+
+# https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20170510_Emergency%20Planning%20&%20Response%20with%20Census%20Bureau%20&%20NOAA%20Resources.pdf
+
+# 
+```
+
+
+## TODO: COMBINE FIRE RISK SCORE + AT-NEED POPULATION SCORE
+```{r combineScores}
+# For each census tract, need to get a fire risk score, an at-need population score, and a normalized score that weights each equally at 50%. In the app, user could change this weighting from 50% to something different.
+```
+
+## TODO: USING BUDGET AND PROGRAM COST OUTPUT LIST OF CENSUS TRACTS TO TARGET
+```{r finalOutput}
+
+# First pass of this can be a simple formula of
+# TotalBudget - (# individual of households in Tract_0 * cost of kit)
+# Tract_0 would be highest-priority tract. And then we'd keep going until TotalBudget runs out.
+
+# Some more advanced version of this might be capping the % of a tract that we expect will receive a kit, which would help reach more tracts
+```
