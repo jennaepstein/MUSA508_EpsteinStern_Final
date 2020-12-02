@@ -1,0 +1,426 @@
+---
+title: "Final"
+author: "Jenna Epstein, Jeff Stern"
+date: "11/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries and functions, message=FALSE, warning=FALSE}
+#libraries
+library(tidyverse)
+library(dplyr)
+library(plyr)
+library(tidyr)  
+library(sf)
+library(sp)
+library(viridis)
+library(spatstat)
+library(rgdal)
+library(raster)
+library(spdep)
+library(FNN)
+library(grid)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(tidycensus)
+library(mapview)
+library(FedData)    # for downloading federal data
+library(ggmap)      # for mapping and more
+library(leaflet)    
+library(rgeos)      # for using well known text (readWKT)
+library(gstat)
+library(tigris)   
+
+root.dir = "https://raw.githubusercontent.com/jeffstern/MUSA508-final"
+
+
+# nn function
+nn_function <- function(measureFrom,measureTo,k) {
+  measureFrom_Matrix <-
+    as.matrix(measureFrom)
+  measureTo_Matrix <-
+    as.matrix(measureTo)
+  nn <-   
+    get.knnx(measureTo, measureFrom, k)$nn.dist
+    output <-
+      as.data.frame(nn) %>%
+      rownames_to_column(var = "thisPoint") %>%
+      gather(points, point_distance, V1:ncol(.)) %>%
+      arrange(as.numeric(thisPoint)) %>%
+      group_by(thisPoint) %>%
+      summarize(pointDistance = mean(point_distance)) %>%
+      arrange(as.numeric(thisPoint)) %>% 
+      dplyr::select(-thisPoint) %>%
+      pull()
+  
+  return(output)  
+}
+
+#r cross validate function
+crossValidate <- function(dataset, id, dependentVariable, indVariables) {
+
+allPredictions <- data.frame()
+cvID_list <- unique(dataset[[id]])
+
+for (i in cvID_list) {
+
+  thisFold <- i
+  cat("This hold out fold is", thisFold, "\n")
+
+  fold.train <- filter(dataset, dataset[[id]] != thisFold) %>% as.data.frame() %>% 
+                dplyr::select(id, geometry, indVariables, dependentVariable)
+  fold.test  <- filter(dataset, dataset[[id]] == thisFold) %>% as.data.frame() %>% 
+                dplyr::select(id, geometry, indVariables, dependentVariable)
+  
+  regression <-
+    glm(count_theftsFromAuto ~ ., family = "poisson", 
+      data = fold.train %>% 
+      dplyr::select(-geometry, -id))
+  
+  thisPrediction <- 
+    mutate(fold.test, Prediction = predict(regression, fold.test, type = "response"))
+    
+  allPredictions <-
+    rbind(allPredictions, thisPrediction)
+    
+  }
+  return(st_sf(allPredictions))
+}
+
+#quintile breaks
+qBr <- function(df, variable, rnd) {
+  if (missing(rnd)) {
+    as.character(quantile(round(df[[variable]],0),
+                          c(.01,.2,.4,.6,.8), na.rm=T))
+  } else if (rnd == FALSE | rnd == F) {
+    as.character(formatC(quantile(df[[variable]]), digits = 3),
+                 c(.01,.2,.4,.6,.8), na.rm=T)
+  }
+}
+
+q5 <- function(variable) {as.factor(ntile(variable, 5))}
+
+#themes and palettes
+mapTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 14,colour = "black"),
+    plot.subtitle=element_text(face="italic"),
+    plot.caption=element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.text.x = element_text(size = 14))
+}
+
+plotTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 14,colour = "black"),
+    plot.subtitle = element_text(face="italic"),
+    plot.caption = element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),
+    panel.grid.major = element_line("grey80", size = 0.1),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.background = element_rect(fill = "grey80", color = "white"),
+    strip.text = element_text(size=12),
+    axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    plot.background = element_blank(),
+    legend.background = element_blank(),
+    legend.title = element_text(colour = "black", face = "italic"),
+    legend.text = element_text(colour = "black", face = "italic"),
+    strip.text.x = element_text(size = 14)
+  )
+}
+
+```
+
+# Data Wrangling and Feature Engineering
+
+## Vegetation and Elevation Data
+```{r arcmap raster data and initial fishnet}
+#importing the fishnet from arcmap that has majority veg classification and mean elevation already. Zonal statistics as table was used to compute both.
+
+fishnet_veg_elev <- st_read("data/fishnet_veg_elev_no_fires/fishnet_veg_elev.shp") %>%          dplyr::rename(VEG_MAJORITY = MAJORITY) %>% 
+dplyr::rename(ELEVATION_MEAN = MEAN) %>% 
+dplyr::select(-AREA) %>% 
+dplyr::mutate(id = row_number()) %>% 
+st_sf()
+
+#no longer needed, but just in case need this to refactor:
+#fishnet_veg_elev <- fishnet_veg_elev %>% as.factor(fishnet_veg_elev$VEG_MAJORITY)
+
+# convert the numbers for vegetation types back to the categories
+fishnet_veg_elev$VEG_MAJORITY[fishnet_veg_elev$VEG_MAJORITY==0] <- "agriculture"
+fishnet_veg_elev$VEG_MAJORITY[fishnet_veg_elev$VEG_MAJORITY==1] <- "barren_or_other"
+fishnet_veg_elev$VEG_MAJORITY[fishnet_veg_elev$VEG_MAJORITY==2] <- "conifer"
+fishnet_veg_elev$VEG_MAJORITY[fishnet_veg_elev$VEG_MAJORITY==3] <- "hardwood"
+fishnet_veg_elev$VEG_MAJORITY[fishnet_veg_elev$VEG_MAJORITY==4] <- "herbaceous"
+fishnet_veg_elev$VEG_MAJORITY[fishnet_veg_elev$VEG_MAJORITY==5] <- "shrub"
+fishnet_veg_elev$VEG_MAJORITY[fishnet_veg_elev$VEG_MAJORITY==6] <- "urban"
+fishnet_veg_elev$VEG_MAJORITY[fishnet_veg_elev$VEG_MAJORITY==7] <- "water"
+```
+
+### Map: Vegetation Majority per Fishnet Cell
+```{r vegetation map}
+# map the majority vegetation classification by fishnet cell
+ggplot() +
+  geom_sf(data = fishnet_veg_elev, aes(fill = VEG_MAJORITY)) +
+  labs(title = "Majority Vegetation Classification by Fishnet Cell") +
+  mapTheme()
+
+```
+
+### Map: Mean Elevation per Fishnet Cell
+```{r elevation map}
+# map the mean elevation by fishnet cell
+# ADD UNIT OF MEASUREMENT
+ggplot() +
+  geom_sf(data = fishnet_veg_elev, aes(fill = ELEVATION_MEAN)) +
+  labs(title = "Mean Elevation by Fishnet Cell") +
+  mapTheme()
+
+```
+
+## Historical Fire Data: Perimeters and Presence of Fires
+```{r bring in clipped fire perimeter data}
+#clipped fire perimeter data to southern california counties in arcmap
+fires_clipped <- st_read("data/fires_clipped/fires_clipped.shp") 
+
+#filter to only include previous 10 years
+fires_clipped <- fires_clipped %>% st_transform(st_crs(fishnet_veg_elev)) %>% filter(YEAR_ > 2009)
+
+## With climate change, things have been changing more rapidly over more recent years. better to train and test on smaller year range of data.
+
+# feature engineering
+
+## 1. intersections of fire perimeters with each fishnet cell. using length function: https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lengths
+fires_fishnet <- fishnet_veg_elev %>% mutate(n_fires_int = lengths(st_intersects(fishnet_veg_elev, fires_clipped)))
+
+## 2. adding a column for yes or no for historical fire presence
+fires_fishnet <-
+  fires_fishnet %>%
+  mutate(FIRE = ifelse(fires_fishnet$n_fires_int > 0, "1", "0"))
+
+fires_fishnet$id <-as.integer(fires_fishnet$id)
+
+```
+
+### Map: Fire Incident Intersections per Fishnet Cell
+```{r intersections of fires by fishnet map}
+# mapping sum of fire incident intersections by cell
+ggplot() +
+  geom_sf(data = fires_fishnet, aes(fill = n_fires_int), color = NA) +
+  scale_fill_viridis() +
+  labs(title = "Count of Historical Fire Incidents by Fishnet Cell") +
+  mapTheme()
+
+```
+
+### Map: Historical Fire Occurence (Yes or No) per Fishnet Cell
+
+```{r intersections of fires by fishnet}
+# mapping fire incident - yes or no (1 or 0)
+ggplot() +
+  geom_sf(data = fires_fishnet, aes(fill = FIRE)) +
+  labs(title = "Presence of Historical Fire Incidents by Fishnet Cell") +
+  mapTheme()
+
+```
+
+## Weather Data
+Discuss process of collecting, aggregating, and interpolating for both precipitation (sum over past 10 years) and average wind speed (average over the past ten years using monthly averages)
+
+```{precipitation data from ghcn - saved out as excel}
+#how to create a continuous weather surface? somehow interpolating across southern cal using specific station data? AFTER downloading things and summing for each month per station, need to interpolate so that they can be joined to each fishnet.
+
+
+#PRCP = Precipitation (tenths of mm)
+
+#ghcn_socal <- get_ghcn_daily(template=extentA, label="ghcn_socal",
+#    elements="prcp", years = 2009:2019, force.redo = F)
+
+# points for the stations
+#ghcn_pts<-data.frame(ID = ghcn_socal$spatial$ID,
+ #   lat = ghcn_socal$spatial@coords[,2],
+  #  long = ghcn_socal$spatial@coords[,1])
+#ghcn_pts<-mutate(ghcn_pts, ID = as.character(as.factor(ID)))
+
+#ghcn_dat<-ghcn_socal$tabular
+
+# Pull out the PRCP (precipitation) tables. If there were other
+# climate elements we could access these in a 
+# similar way (i.e. ghcn_dat, "[[", "TMIN")
+#prcp<-lapply(ghcn_dat, "[[", "PRCP")
+
+# Dissolve the list into a single data.frame and add a station id
+
+#prcp<-do.call("rbind", prcp)
+#prcp$station<-substring(row.names(prcp),1,11)
+
+#prcp <- prcp %>% as_tibble(rownames = "id") 
+
+#prcp <- prcp %>%    
+ # replace(is.na(.), 0) %>%
+ # dplyr::mutate(sumrow = rowSums((.[5:35])))
+ 
+#head(prcp)
+
+#write.csv(prcp, file="precipitation_socal_1999-2019.csv")
+
+```
+
+```{avg wind speed data from ghcn - saved out as excel}
+#AWND = Average daily wind speed (tenths of meters per second)
+
+#ghcn_awnd_socal <- get_ghcn_daily(template=extentA, #label="ghcn_awnd_socal",
+ #   elements="awnd", years = 2009:2019, force.redo = F)
+
+# points for the stations
+#ghcn_pts2<-data.frame(ID = ghcn_awnd_socal$spatial$ID,
+ #   lat = ghcn_awnd_socal$spatial@coords[,2],
+  #  long = ghcn_awnd_socal$spatial@coords[,1])
+#ghcn_pts2<-mutate(ghcn_pts2, ID = as.character(as.factor(ID)))
+
+#ghcn_dat2<-ghcn_awnd_socal$tabular
+
+# Pull out the AWND tables. If there were other
+# climate elements we could access these in a 
+# similar way (i.e. ghcn_dat, "[[", "TMIN")
+#awnd<-lapply(ghcn_dat2, "[[", "AWND")
+
+# Dissolve the list into a single data.frame and add a station id
+
+#awnd<-do.call("rbind", awnd)
+#awnd$station<-substring(row.names(awnd),1,11)
+#awnd <- awnd %>% as_tibble(rownames = "id") 
+
+#awnd <- awnd %>%    
+#  replace(is.na(.), 0) %>%
+#  dplyr::select(-station) %>%
+#  dplyr::mutate(meanrow = rowMeans((.[5:35])))
+
+#head(awnd)
+
+#write.csv(awnd, file="avgwindspeed_socal_1999-2019.csv")
+
+```
+
+```{r load in data}
+#load in specific weather data selection for the stations
+weather <- read.csv("data/socal_weather_stations_data.csv") %>% dplyr::rename(ID = "ï..ID")  %>% st_as_sf(coords = c("lon", "lat"), crs = 4236, agr="constant")
+
+#st transform
+weather <- weather %>% st_transform(st_crs(fishnet_veg_elev))
+
+#map both precip and wind speed
+ggplot() +
+  geom_sf(data=fishnet_veg_elev)+ 
+  geom_sf(data=weather, aes(color=annual_precip_sum, size=annual_avgwindspeed))
+```
+
+
+```{r interpolation - precipitation}
+#create new df with only precipitation variable
+weather_precip <- weather %>% dplyr::select(geometry, annual_precip_sum)
+
+# perform idw for precipitation surface. DW interpolation that uses a power parameter of 2 (idp=2.0).
+weather_precip.idw <- gstat::idw(annual_precip_sum ~ 1, weather_precip, newdata=fishnet_veg_elev, idp=2)
+
+#rename var1.pred
+weather_precip.idw <- weather_precip.idw %>% dplyr::rename(sum_precip_idw = var1.pred)
+
+#map, to check. ADD UNIT OF PRECIP
+ggplot()+
+  geom_sf(data=weather_precip.idw, aes(fill=sum_precip_idw)) +
+  scale_fill_viridis()
+
+#plotting sum rainfall interpolation, to check
+#plot(weather_precip.idw)
+
+#create new df
+precip.idw <- weather_precip.idw %>% dplyr::select(sum_precip_idw, geometry) 
+
+#join to main fishnet
+fishnet_precip <- st_join(fires_fishnet, precip.idw, join=st_equals)
+
+```
+
+```{r interpolation - avg wind speed}
+#new df with only wind speed variable
+weather_wind <- weather %>% dplyr::select(geometry, annual_avgwindspeed)
+
+#idw for wind speed surface. DW interpolation that uses a power parameter of 2 (idp=2.0).
+weather_wind.idw <- gstat::idw(annual_avgwindspeed ~ 1, weather_wind, newdata=fishnet_veg_elev, idp=2)
+
+#rename var1.pred
+weather_wind.idw <- weather_wind.idw %>% dplyr::rename(avg_windspeed_idw = var1.pred)
+
+ggplot()+
+  geom_sf(data=weather_wind.idw, aes(fill=var1.pred)) +
+  scale_fill_viridis()
+
+#plotting sum rainfall interpolation
+plot(weather_wind.idw)
+
+avg_windspeed.idw <- weather_precip.idw %>% dplyr::select(var1.pred, geometry) 
+
+#join to precip fishnet, create a final fishnet
+fishnet_final <- st_join(fishnet_precip, avg_windspeed.idw, join=st_equals)
+
+```
+
+
+
+```{r distance to electric lines}
+# looking at California Electric Transmission Lines; distance to electrical line from centroid of each fishnet cell
+
+electric_lines <- st_read("arcmap_data/elecLines_clip/elecLines_clip.shp") %>%  st_transform(st_crs(fishnet_veg))
+
+ggplot() +
+  geom_sf (data=electric_lines)
+
+
+library(nngeo)
+# distance to nearest point of a multiline - NOT WORKING YET
+fires_fishnet <-
+  fires_fishnet %>%
+    mutate(distElecLine=st_nn(st_centroid(fires_fishnet), electric_lines, returnDist = TRUE))
+
+```
+
+
+```{r}
+# go from fishnet cells to census tracts
+# instead of areal, st_interpolate_aw to go from grid cells --> census tract
+```
+
+# TO DO - add more features to the final fishnet. hopefully done with raster stuff. want to work on testing the model first.
+
+# TO DO - instead of a binary predictor (yes fire, no fire), what about predicting a "risk score" on a continuous scale? what weight will we give the actual prediction - probability of fire occurence between 0 and 1
+
+
+```{r load calfire facilities point data}
+# california facilities for combating wildfires, point data
+calfireFacilities <- st_read("https://opendata.arcgis.com/datasets/1c8a93cac92f418e98a8fa6a2eaf4265_0.geojson") 
+ggplot()+
+  geom_sf(data=calfireFacilities)
+#%>% st_transform(st_crs(socal_counties))
+
+## need to filter to soCal bounds, then join to final net
+```
+
+
+## Then, pull in ACS data for southern california by tract.
