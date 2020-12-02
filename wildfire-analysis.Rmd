@@ -278,7 +278,8 @@ getCACensusTractDataByYear <- function(year) {
 }
 
 tracts17 <- getCACensusTractDataByYear(2017) %>%
-  filter(GEOID != '06037599100')
+  filter(GEOID != '06037599100') %>%
+  filter(GEOID != '06037599000')
 
 palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
 
@@ -307,7 +308,6 @@ tracts17_prioritized <- tracts17 %>%
 
 ```
 
-## TODO: USING BUDGET AND PROGRAM COST OUTPUT LIST OF CENSUS TRACTS TO TARGET
 ```{r finalOutput}
 
 # First pass of this can be a simple formula of
@@ -317,8 +317,13 @@ tracts17_prioritized <- tracts17 %>%
 # Some more advanced version of this might be capping the % of a tract that we expect will receive a kit, which would help reach more tracts
 
 options(scipen = 999)
-budget <- 500000
-costOfKit <- 50
+
+tracts17_prioritized <- tracts17_prioritized %>%
+  mutate(isReceivingKits = 0)
+
+budget <- 2500000
+costOfKit <- 20
+pctOfTract <- 1.0
 numOfKits <- (budget / costOfKit)
 
 budgetRemaining <- budget
@@ -335,7 +340,6 @@ while(budgetRemaining > costOfKit) {
     if(costForTract <= budgetRemaining-costForTract) {
       print(paste("Budget remaining: $", addComma(budgetRemaining),sep=""))
       totalHousingUnits <- totalHousingUnits + housingUnits
-
     } else {
       possibleHousingUnits <- floor(budgetRemaining/costOfKit)
       totalHousingUnits <- totalHousingUnits + possibleHousingUnits
@@ -343,9 +347,20 @@ while(budgetRemaining > costOfKit) {
     }
     budgetRemaining <- budgetRemaining - costForTract
     tract.i <- tract.i + 1  
+    tracts17_prioritized[tract.i,]$isReceivingKits <- 1
     print("...")
 }
-print(paste(addComma(totalHousingUnits),"housing units in", tract.i, "LA County tracts can be served by allocating $",addComma(budget),"to the emergency kit allocation program (not including overhead costs)"))
+print(paste(addComma(totalHousingUnits),"housing units in", tract.i, "LA County tracts can be served by investing $",addComma(budget),"in the emergency kit allocation program (not including overhead costs)"))
+
+
+allocationMap <- ggplot(tracts17_prioritized) +
+  geom_sf(data = st_union(tracts17_prioritized))+
+  geom_sf(aes(fill = isReceivingKits),lwd = 0) +
+  labs(subtitle = "Assumes kits are distributed to 100% of housing units in tracts", title = paste("Budget: $",addComma(budget)," - Kit cost: $",addComma(costOfKit),sep="")) +
+  theme(plot.title = element_text(size=22)) +
+  theme(legend.position = "none")
+
+allocationMap
 
 ```
 
