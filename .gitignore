@@ -37,3 +37,5 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+.working_data_NOT_FOR_GITHUB
