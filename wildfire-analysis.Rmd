@@ -242,13 +242,69 @@ southcoast_CalVeg <- st_read(dsn="data/S_USA.EVMid_R05_SouCoast.gdb", layer="EVM
 
 # https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20170510_Emergency%20Planning%20&%20Response%20with%20Census%20Bureau%20&%20NOAA%20Resources.pdf
 
-# 
+projection <- "EPSG:6423"
+census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", install=TRUE, overwrite=TRUE)
+
+countiesOfInterest <- c('Los Angeles')
+
+variablesOfInterest <- c("B25026_001E","B02001_002E","B15001_050E",
+                         "B15001_009E","B19013_001E","B25058_001E",
+                         "B06012_002E", "B01001_048E", "B01001_049E",
+                         "B01001_024E", "B01001_025E", "B07013_002E")
+
+getCACensusTractDataByYear <- function(year) {
+    get_acs(geography = "tract", variables = variablesOfInterest, 
+            year=year, state='CA', county=countiesOfInterest, geometry=T, output="wide") %>%
+        st_transform(projection) %>%
+        rename(TotalPop = "B25026_001E",
+               White = "B02001_002E",
+               Female1824Bachelor = "B15001_050E",
+               Male1824Bachelor = "B15001_009E",
+               Female80to84 = "B01001_048E",
+               Female85orMore = "B01001_049E",
+               Male80to84 = "B01001_024E",
+               Male85orMore = "B01001_025E", 
+               MedianHouseholdIncome = "B19013_001E",
+               MedianRent = "B25058_001E",
+               Poverty = "B06012_002E",
+               HousingUnits = "B07013_002E"
+        ) %>%
+        dplyr::select(-NAME, -starts_with("B")) %>%
+        mutate(pctNonWhite = ifelse(TotalPop < White, 0, ifelse(TotalPop > 0, 1 -(White / TotalPop),0)),
+               pctBachelors = ifelse(TotalPop > 0, ((Female1824Bachelor + Male1824Bachelor) / TotalPop),0),
+               pctPoverty = ifelse(TotalPop > 0, Poverty / TotalPop, 0),
+               pctOver80 = ifelse(TotalPop> 0, ((Female80to84 + Female85orMore + Male80to84 + Male85orMore) / TotalPop), 0),
+               year=as.character(year))
+}
+
+tracts17 <- getCACensusTractDataByYear(2017) %>%
+  filter(GEOID != '06037599100')
+
+palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
+
+
+nonWhitePlot <- ggplot(tracts17) +
+  geom_sf(data = st_union(tracts17))+
+  geom_sf(aes(fill = q5(pctNonWhite)),lwd = 0) +
+  scale_fill_manual(values = palette5,
+                    labels = qBr(tracts17, "pctNonWhite", rnd=FALSE),
+                    name = "Pct Non-White\n(Quintile Breaks)") +
+  labs(title = "% Non-White in L.A. County", subtitle = "By census tract, 2017 ACS") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+
+nonWhitePlot
 ```
 
 
 ## TODO: COMBINE FIRE RISK SCORE + AT-NEED POPULATION SCORE
 ```{r combineScores}
 # For each census tract, need to get a fire risk score, an at-need population score, and a normalized score that weights each equally at 50%. In the app, user could change this weighting from 50% to something different.
+
+tracts17_prioritized <- tracts17 %>%
+  mutate(priorityScore = pctNonWhite) %>%
+  arrange(desc(priorityScore))
+
 ```
 
 ## TODO: USING BUDGET AND PROGRAM COST OUTPUT LIST OF CENSUS TRACTS TO TARGET
@@ -259,4 +315,74 @@ southcoast_CalVeg <- st_read(dsn="data/S_USA.EVMid_R05_SouCoast.gdb", layer="EVM
 # Tract_0 would be highest-priority tract. And then we'd keep going until TotalBudget runs out.
 
 # Some more advanced version of this might be capping the % of a tract that we expect will receive a kit, which would help reach more tracts
+
+options(scipen = 999)
+budget <- 500000
+costOfKit <- 50
+numOfKits <- (budget / costOfKit)
+
+budgetRemaining <- budget
+tract.i <- 1
+totalHousingUnits <- 0
+
+addComma <- function(num){ format(num, big.mark=",")}
+
+while(budgetRemaining > costOfKit) {
+    
+    housingUnits <- tracts17_prioritized[tract.i,]$HousingUnits
+    costForTract <- housingUnits*costOfKit
+    print(paste("Tract #",tracts17_prioritized[tract.i,]$GEOID, " is priority #", tract.i, " and has ", addComma(housingUnits), " housing units, Cost of kits: $",addComma(costForTract), sep=""))
+    if(costForTract <= budgetRemaining-costForTract) {
+      print(paste("Budget remaining: $", addComma(budgetRemaining),sep=""))
+      totalHousingUnits <- totalHousingUnits + housingUnits
+
+    } else {
+      possibleHousingUnits <- floor(budgetRemaining/costOfKit)
+      totalHousingUnits <- totalHousingUnits + possibleHousingUnits
+      print(paste("Cost for whole tract exceeds remaining budget, partial distribution to",addComma(floor(possibleHousingUnits))," housing units possible"))
+    }
+    budgetRemaining <- budgetRemaining - costForTract
+    tract.i <- tract.i + 1  
+    print("...")
+}
+print(paste(addComma(totalHousingUnits),"housing units in", tract.i, "LA County tracts can be served by allocating $",addComma(budget),"to the emergency kit allocation program (not including overhead costs)"))
+
+```
+
+## TODO: INTERACTIVE MAP
+```{r interactiveMap}
+library(leaflet)
+library(htmltools)
+library(scales)
+
+labels <- sprintf(
+  "<strong>%s</strong>",
+  tracts19$GEOID) %>% 
+  lapply(HTML)
+
+#pal <- colorBin("Blues", domain = states$water_km2, bins = 7)
+
+leaflet(tracts19 %>% st_transform('WGS84')) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(
+    # fill
+    fillColor   = '#FF0000',
+    fillOpacity = 0.7,
+    # line
+    dashArray   = "3",
+    weight      = 2,
+    color       = "white",
+    opacity     = 1,
+    # interaction
+    highlight = highlightOptions(
+      weight = 5,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE),
+  label = labels,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))
 ```
