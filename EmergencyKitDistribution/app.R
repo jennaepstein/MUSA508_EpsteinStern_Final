@@ -16,7 +16,7 @@ library(rmarkdown)
 
 projection <- "EPSG:6423"
 
-shinyData <- st_read("../finalDataSet-forShiny.shp") %>%
+shinyData <- st_read("finalDataSet-forShiny.shp") %>%
     st_transform(projection)
 
 addComma <- function(num){ format(num, big.mark=",")}
@@ -72,7 +72,6 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
     output$allocationMap <- renderPlot ({
-            print("Running function")
             getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTract = 1.0, weight = 0.5){
                  d <- shinyData %>%
                     mutate(isReceivingKits = 0) %>%
@@ -90,15 +89,10 @@ server <- function(input, output, session) {
                     housingUnits <- floor(d[tract.i,]$HsngUnt * pctOfTract)
                     if (housingUnits == 0) { tract.i <- tract.i+1; next; }
                     costForTract <- housingUnits*costOfKit
-                    #print(paste("Tract #",d[tract.i,]$FIPS, " is priority #", tract.i, " and has ", addComma(housingUnits), " housing units, Cost of kits: $",addComma(costForTract), sep=""))
-                    if(costForTract <= budgetRemaining-costForTract) {
-                        #      print(paste("Budget remaining: $", addComma(budgetRemaining),sep=""))
-                        totalHousingUnits <- totalHousingUnits + housingUnits
+                    if(costForTract <= budgetRemaining) {
                         kitsSent <- housingUnits
                     } else {
                         possibleHousingUnits <- floor(budgetRemaining/costOfKit)
-                        totalHousingUnits <- totalHousingUnits + possibleHousingUnits
-                        #       print(paste("Cost for whole tract exceeds remaining budget, partial distribution to",addComma(floor(possibleHousingUnits))," housing units possible"))
                         kitsSent <- possibleHousingUnits
                     }
                     budgetRemaining <- budgetRemaining - costForTract
@@ -106,7 +100,6 @@ server <- function(input, output, session) {
                     d[tract.i,]$totalKitsToSend <- kitsSent
                     tract.i <- tract.i + 1  
                 }
-                #  print(paste(addComma(totalHousingUnits),"housing units in", tract.i, "LA County tracts can be served by investing $",addComma(budget),"in the emergency kit allocation program (not including overhead costs)"))
                 attr(d, "budget") <- budget
                 attr(d, "costOfKit") <- costOfKit
                 attr(d, "pctOfTract") <- pctOfTract

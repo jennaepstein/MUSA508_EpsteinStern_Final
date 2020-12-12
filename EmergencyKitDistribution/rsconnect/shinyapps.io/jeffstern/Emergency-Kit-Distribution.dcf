@@ -1,0 +1,12 @@
+name: Emergency-Kit-Distribution
+title: Emergency-Kit-Distribution
+username:
+account: jeffstern
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3393571
+bundleId: 3980544
+url: https://jeffstern.shinyapps.io/Emergency-Kit-Distribution/
+when: 1607811233.85736
+asMultiple: FALSE
+asStatic: FALSE
