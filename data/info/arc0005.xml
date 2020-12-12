@@ -1,2 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<metadata xml:lang="en"><Esri><CreaDate>20201201</CreaDate><CreaTime>20171400</CreaTime><ArcGISFormat>1.0</ArcGISFormat><SyncOnce>TRUE</SyncOnce><DataProperties><lineage><Process ToolSource="c:\program files (x86)\arcgis\desktop10.7\ArcToolbox\Toolboxes\Spatial Analyst Tools.tbx\ZonalStatisticsAsTable" Date="20201201" Time="201714">ZonalStatisticsAsTable fishnet_veg_output FID elev_clip C:\Users\jenna\Documents\GitHub\MUSA508-final\data\Zonal_mean_elev DATA MEAN</Process></lineage></DataProperties></Esri></metadata>

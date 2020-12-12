@@ -1,0 +1,1108 @@
+---
+title: "Final"
+author: "Jenna Epstein, Jeff Stern"
+date: "11/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries and functions, message=FALSE, warning=FALSE}
+#libraries
+library(tidyverse)
+library(dplyr)
+library(plyr)
+library(tidyr)  
+library(sf)
+library(sp)
+library(viridis)
+library(spatstat)
+library(rgdal)
+library(raster)
+library(spdep)
+library(FNN)
+library(grid)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(tidycensus)
+library(mapview)
+library(FedData)    # for downloading federal data
+library(leaflet)    
+library(rgeos)
+library(nngeo)
+library(gstat)
+library(tigris)   
+library(pscl)
+library(plotROC)
+library(pROC)
+library(scales)
+library(lubridate)
+library(stargazer)
+library(caret)
+library(jtools)
+library(ggrepel)
+
+root.dir = "C:/Users/jenna/Documents/GitHub/MUSA508-final/"
+
+# nn function
+nn_function <- function(measureFrom,measureTo,k) {
+  measureFrom_Matrix <-
+    as.matrix(measureFrom)
+  measureTo_Matrix <-
+    as.matrix(measureTo)
+  nn <-   
+    get.knnx(measureTo, measureFrom, k)$nn.dist
+    output <-
+      as.data.frame(nn) %>%
+      rownames_to_column(var = "thisPoint") %>%
+      gather(points, point_distance, V1:ncol(.)) %>%
+      arrange(as.numeric(thisPoint)) %>%
+      group_by(thisPoint) %>%
+      summarize(pointDistance = mean(point_distance)) %>%
+      arrange(as.numeric(thisPoint)) %>% 
+      dplyr::select(-thisPoint) %>%
+      pull()
+  
+  return(output)  
+}
+
+#r cross validate function
+crossValidate <- function(dataset, id, dependentVariable, indVariables) {
+
+allPredictions <- data.frame()
+cvID_list <- unique(dataset[[id]])
+
+for (i in cvID_list) {
+
+  thisFold <- i
+  cat("This hold out fold is", thisFold, "\n")
+
+  fold.train <- filter(dataset, dataset[[id]] != thisFold) %>% as.data.frame() %>% 
+                dplyr::select(id, geometry, indVariables, dependentVariable)
+  fold.test  <- filter(dataset, dataset[[id]] == thisFold) %>% as.data.frame() %>% 
+                dplyr::select(id, geometry, indVariables, dependentVariable)
+  
+  regression <-
+    glm(n_fires_int ~ ., family = "poisson", 
+      data = fold.train %>% 
+      dplyr::select(-geometry, -id))
+  
+  thisPrediction <- 
+    mutate(fold.test, Prediction = predict(regression, fold.test, type = "response"))
+    
+  allPredictions <-
+    rbind(allPredictions, thisPrediction)
+    
+  }
+  return(st_sf(allPredictions))
+}
+
+#quintile breaks
+qBr <- function(df, variable, rnd) {
+  if (missing(rnd)) {
+    as.character(quantile(round(df[[variable]],0),
+                          c(.01,.2,.4,.6,.8), na.rm=T))
+  } else if (rnd == FALSE | rnd == F) {
+    as.character(formatC(quantile(df[[variable]]), digits = 3),
+                 c(.01,.2,.4,.6,.8), na.rm=T)
+  }
+}
+
+q5 <- function(variable) {as.factor(ntile(variable, 5))}
+
+#themes and palettes
+mapTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 14,colour = "black"),
+    plot.subtitle=element_text(face="italic"),
+    plot.caption=element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.text.x = element_text(size = 14))
+}
+
+plotTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 14,colour = "black"),
+    plot.subtitle = element_text(face="italic"),
+    plot.caption = element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),
+    panel.grid.major = element_line("grey80", size = 0.1),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.background = element_rect(fill = "grey80", color = "white"),
+    strip.text = element_text(size=12),
+    axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    plot.background = element_blank(),
+    legend.background = element_blank(),
+    legend.title = element_text(colour = "black", face = "italic"),
+    legend.text = element_text(colour = "black", face = "italic"),
+    strip.text.x = element_text(size = 14)
+  )
+}
+palette2 <- c("#fcff93", "#f7b61f")
+
+
+#getting discrete viridis inferno
+library(scales)
+#q_colors =  5
+#v_colors =  viridis(q_colors, option = "B")
+#print(v_colors)
+
+paletteInferno5 <- c("#000004FF", "#56106EFF", "#BB3754FF", "#F98C0AFF", "#FCFFA4FF")
+paletteInferno8 <- c("#fcff93", "#f7b61f", "#f06813", "#c83233", "#8c1750", "#51005b", "#1d0042", "#000005")
+
+```
+
+# Data Wrangling and Feature Engineering
+
+## Vegetation and Elevation Data
+```{r arcmap raster data and initial fishnet}
+#importing the fishnet from arcmap that has majority veg classification and mean elevation already. Zonal statistics as table was used to compute both.
+
+#JENNA
+fishnet_rasterfeatures <- st_read("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/fishnet_veg_elev_imperv_nofires/fishnet_raster_features.shp")
+
+#JEFF - change to your local path
+#fishnet_veg_elev_imperv <- st_read("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/fishnet_veg_elev_imperv_nofires/fishnet_raster_features.shp")
+
+# rename some columns, create a row id column, transform to sf
+fishnet_rasterfeatures <- fishnet_rasterfeatures %>%
+  dplyr::rename(VEG_MAJORITY = MAJORITY) %>% 
+  dplyr::rename(ELEVATION_MEAN = MEAN) %>% 
+  dplyr::rename(IMPERV_SURFACE_PCT_MEAN = MEAN_1) %>%
+  dplyr::select(-AREA, -MEAN_12) %>% 
+  st_sf()
+
+fishnet_rasterfeatures <- fishnet_rasterfeatures %>% dplyr::mutate(uniqueID = row_number())
+fishnet_rasterfeatures$uniqueID <-as.integer(fishnet_rasterfeatures$uniqueID)
+
+#no longer needed, but just in case need this to refactor:
+#fishnet_veg_elev <- fishnet_veg_elev %>% as.factor(fishnet_veg_elev$VEG_MAJORITY)
+
+# convert the numbers for vegetation types back to the categories
+fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==0] <- "agriculture"
+fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==1] <- "barren_or_other"
+fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==2] <- "conifer"
+fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==3] <- "hardwood"
+fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==4] <- "herbaceous"
+fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==5] <- "shrub"
+fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==6] <- "urban"
+fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==7] <- "water"
+```
+##counties
+```{r}
+#all cali boundaries (counties)
+counties <-  st_read("https://opendata.arcgis.com/datasets/8713ced9b78a4abb97dc130a691a8695_0.geojson") %>% st_transform(st_crs(fishnet_rasterfeatures))
+
+#socal counties
+socal_counties <- counties %>% filter(COUNTY_NAME == "Kern"| COUNTY_NAME == "Riverside" | COUNTY_NAME == "Los Angeles" | COUNTY_NAME == "Imperial" | COUNTY_NAME == "San Bernardino" | COUNTY_NAME == "Ventura"| COUNTY_NAME == "Orange" | COUNTY_NAME == "Santa Barbara" | COUNTY_NAME == "San Luis Obispo" | COUNTY_NAME == "San Diego") 
+
+socal_counties <- socal_counties %>% filter(OBJECTID < 59)
+
+socal_counties_coastal <- socal_counties %>% filter(COUNTY_NAME == "Los Angeles" | COUNTY_NAME == "Santa Barbara" | COUNTY_NAME == "San Diego" | COUNTY_NAME == "Ventura" | COUNTY_NAME == "Orange")
+
+
+# centroids of southern california counties
+centroids.socal_counties <- cbind(socal_counties_coastal, st_coordinates(st_centroid(socal_counties_coastal)))
+```
+```{r}
+#spatial join fishnet with raster features to the counties to prep for more feature engineering
+fishnet_features <-
+  st_centroid(fishnet_rasterfeatures) %>%
+    st_join(dplyr::select(socal_counties_coastal, COUNTY_NAME)) %>%
+      st_drop_geometry() %>%
+      left_join(dplyr::select(fishnet_rasterfeatures, geometry, uniqueID)) %>%
+      st_sf() %>%
+  na.omit()
+```
+
+
+### Map: Vegetation Majority per Fishnet Cell
+```{r vegetation map}
+# map the majority vegetation classification by fishnet cell
+ggplot() +
+  geom_sf(data = fishnet_features, aes(fill = VEG_MAJORITY)) +
+  scale_fill_manual(values = paletteInferno8)+
+  labs(title = "Majority Vegetation Classification in Southern California",
+       subtitle="Per Fishnet Cell",
+       caption="Data source: frap.fire.ca.gov - FVEG geodatabase (2015)") + mapTheme()
+
+```
+### Map: Mean Percent Impervious Surface
+```{r impervious surface map}
+# map the mean elevation by fishnet cell
+# source: https://geodata.lib.berkeley.edu/catalog/stanford-wj406qc5431; publisher - USGS
+ggplot() +
+  geom_sf(data = fishnet_features, aes(fill = IMPERV_SURFACE_PCT_MEAN)) +
+  scale_fill_viridis(option="B")+
+  labs(title = "Mean Impervious Surface across Southern California",
+       subtitle="Per Fishnet Cell",
+       fill="Mean Percent of \nImpervious Surface",
+       caption="Data source: National Land Cover Database (2016)") + mapTheme()
+```
+
+### Map: Mean Elevation per Fishnet Cell
+```{r elevation map2}
+# map the mean elevation by fishnet cell
+# source: https://geodata.lib.berkeley.edu/catalog/stanford-wj406qc5431; publisher - USGS
+ggplot() +
+  geom_sf(data = fishnet_features, aes(fill = ELEVATION_MEAN)) +
+  scale_fill_viridis(option="B")+
+  labs(title = "Mean Elevation across Southern California",
+       subtitle="Per Fishnet Cell",
+       fill="Mean Elevation \n(meters)",
+       caption="Data source: USGS - Digital Elevation Model of North America, 15 arc-seconds resolution (2009)") + mapTheme()
+```
+
+
+## Historical Fire Data: Perimeters and Presence of Fires
+
+```{r}
+#all perimeters
+all_cali_fires <- st_read("https://opendata.arcgis.com/datasets/e3802d2abf8741a187e73a9db49d68fe_2.geojson") %>% st_transform(st_crs(fishnet_features)) 
+
+# last five years 
+cali_fires_recent <- all_cali_fires %>% filter(YEAR_ > 2014)
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+#map all cali fires since 1950
+ggplot()+
+  geom_sf(data=counties, fill="grey", color="grey") +
+  geom_sf(data=all_cali_fires, fill="#f7b61f", color="red", alpha=0.8) +
+  labs(title = "Fire Perimeters for all Incidents in California", subtitle = "1950-2019", caption="Data Sources: CALFIRE, California State Geoportal") +
+ mapTheme()
+```
+
+
+```{r eval=FALSE, include=FALSE}
+#map all cali fires, past five years
+ggplot()+
+  geom_sf(data=counties, fill="grey", color="grey") +
+  geom_sf(data=cali_fires_recent, fill="orange", color="red", alpha=0.8) +
+  labs(title = "Fire Perimeters for all Incidents in California", subtitle = "2010-2019", caption="Data Sources: CALFIRE, California State Geoportal") +
+ mapTheme()
+
+```
+
+```{r bring in clipped fire perimeter data}
+#clipped fire perimeter data to southern california counties in arcmap
+
+#JENNA
+fires_clipped <- st_read("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/fires_clipped/fires_clipped.shp") %>% st_sf() %>% filter(YEAR_ > 2014)
+
+#JEFF - add your local path
+#fishnet_veg_elev <- st_read("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/fires_clipped/fires_clipped.shp") 
+
+#filter to only include previous 10 years
+fires_clipped <- fires_clipped %>% st_transform(st_crs(fishnet_features))
+```
+
+```{r map in clipped fire perimeter data}
+#map, if wanted
+ggplot()+
+  geom_sf(data=socal_counties_coastal, fill="gray", color="white") +
+  geom_sf(data=socal_counties, fill="gray", color="white") +
+  geom_sf(data=fires_clipped, fill="#f7b61f", color="#f06813", alpha=0.9) +
+     geom_text(data = centroids.socal_counties, aes(X, Y, label = COUNTY_NAME), size = 3, fontface="bold")+
+  labs(title = "Fire Perimeters in Southern California",
+       subtitle="2015-2019",
+       caption="Data Sources: CALFIRE, California State Geoportal") +
+  mapTheme()
+         
+## With climate change, things have been changing more rapidly over more recent years. better to train and test on smaller year range of data.
+
+# feature engineering
+```
+
+
+```{r map in clipped fire perimeter data}
+## 1. intersections of fire perimeters with each fishnet cell. using length function: https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lengths
+fires_fishnet <- fishnet_features %>% mutate(n_fires_int = lengths(st_intersects(fishnet_features, fires_clipped)))
+
+## 2. adding a column for yes or no for historical fire presence
+fires_fishnet <-
+  fires_fishnet %>%
+  mutate(prev_fire = ifelse(fires_fishnet$n_fires_int > 0, "1", "0"))
+
+```
+
+```{r}
+#not sure if these graphs make sense because honestly they are just showing the number of incidents without showing magnitude
+
+ggplot(data=fires_clipped, aes(x=YEAR_, y=GIS_ACRES)) +
+  geom_col(stat="identity", fill="#f7b61f")+
+       xlab("Year")+ 
+       ylab("Acres Burned") + 
+    stat_smooth(data=fires_clipped, aes(x=YEAR_, y=GIS_ACRES), method="lm", se=FALSE, size=1)+
+   labs(title="Acres Burned by Wildfires in Southern California",
+      subtitle="2015-2019")+ plotTheme()
+
+```
+
+
+### Map: Fire Incident Intersections per Fishnet Cell
+```{r intersections of fires by fishnet map}
+# mapping sum of fire incident intersections by cell - OUTCOME VARIABLE FOR GEOSPATIAL RISK MODEL
+ggplot() +
+  geom_sf(data = fires_fishnet, aes(fill = n_fires_int)) +
+  scale_fill_viridis(option="B")+
+  labs(title = "Fire Perimeter Intersections in Southern California",
+       fill="Fire Perimeter \nIntersections",
+       subtitle = "Count of Incident Intersections per Fishnet Cell | 2015-2019") +
+  mapTheme()
+
+```
+
+### Map: Historical Fire Occurence (Yes or No) per Fishnet Cell
+
+```{r intersections of fires by fishnet}
+# mapping fire incident - yes or no (1 or 0)
+
+fires_fishnet$prev_fire <- as.character(fires_fishnet$prev_fire)
+
+ggplot() +
+  geom_sf(data = fires_fishnet, aes(fill = prev_fire)) +
+  scale_fill_manual(values=palette2)+
+  labs(title = "Presence of Historical Fire Incidents in Southern California",
+       subtitle="Per Fishnet Cell | 2015-2019 \n \n0=no fire occurred; 1=at least one fire occurred",
+       fill="Fire Occurrence")+
+      # caption="Data Sources: CALFIRE; California State Geoportal") +
+  mapTheme()+ theme(legend.position='bottom')
+
+```
+
+
+```{r}
+#now, convert prev_fire to integer to prepare for model
+fires_fishnet$prev_fire <- as.numeric(fires_fishnet$prev_fire)
+
+```
+
+## feature - tree mortality hazard classification
+```{r}
+tier1hazard_treemortality <- st_read("https://opendata.arcgis.com/datasets/a71a85136b0b414ea734fdfbe3d7674a_0.geojson") %>% st_transform(st_crs(fishnet_rasterfeatures))
+
+## 1. intersections of tier 1 areas with each fishnet cell. using length function: https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lengths
+fires_fishnet <- fires_fishnet %>% mutate(n_tier1hazard_int = lengths(st_intersects(fires_fishnet, tier1hazard_treemortality)))
+
+```
+
+
+## Weather Data
+Discuss process of collecting, aggregating, and interpolating for the selected weather variables over the past five years.
+
+```{r load in data, eval=FALSE, include=FALSE}
+#load in specific weather data selection for the stations
+#JENNA
+weather <- read.csv("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/weather_data_socal_2015to2019.csv") 
+
+#JEFF - add local file path
+#weather <- read.csv("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/weather_data_socal_2015to2019.csv")
+
+# convert to sf
+weather <- weather %>%  st_as_sf(coords = c("lon", "lat"), crs = 4236, agr="constant")
+
+#st transform to cali albers / NAD83 to be consistent
+weather <- weather %>% st_transform(st_crs("EPSG:3310"))
+
+#map both precip and wind speed
+ggplot() +
+  geom_sf(data=fishnet_features)+ 
+  geom_sf(data=weather)
+
+```
+
+```{r}
+#station data averages by year
+
+weather_annual <- group_by(weather, year, weather_station_id) %>%
+      dplyr::summarize(mean_ann_tmpf = mean(mean_tmpf, na.rm = TRUE),
+                       mean_ann_precipitation = mean(mean_precipitation, na.rm = TRUE),
+                       mean_ann_humidity = mean(mean_humidity, na.rm = TRUE),
+                       mean_ann_windspeed = mean(mean_wind_Speed, na.rm = TRUE)) %>% ungroup()
+
+```
+### is an idp of 2.0 appropriate for this scale?
+
+```{r interpolation - precipitation, eval=FALSE, include=FALSE}
+#create new df with only precipitation variable
+weather_precip <- weather_annual %>% dplyr::select(geometry, mean_ann_precipitation)
+
+# perform idw for precipitation surface. DW interpolation that uses a power parameter of 2 (idp=2.0).
+weather_precip.idw <- gstat::idw(mean_ann_precipitation ~ 1, weather_precip, newdata=fishnet_features, idp=2.0)
+
+#rename var1.pred
+weather_precip.idw <- weather_precip.idw %>% dplyr::rename(avg_precip_idw = var1.pred)
+
+#create new df
+precip.idw <- weather_precip.idw %>% dplyr::select(avg_precip_idw, geometry) 
+
+#join to main fishnet
+fishnet_precip <- st_join(fires_fishnet, precip.idw, join=st_equals)
+
+```
+
+
+```{r interpolation - avg wind speed, eval=FALSE, include=FALSE}
+#new df with only wind speed variable
+weather_wind <- weather_annual %>% dplyr::select(geometry, mean_ann_windspeed)
+
+#idw for wind speed surface. DW interpolation that uses a power parameter of 2 (idp=2.0).
+weather_wind.idw <- gstat::idw(mean_ann_windspeed ~ 1, weather_wind, newdata=fishnet_features, idp=2.0)
+
+#rename var1.pred
+weather_wind.idw <- weather_wind.idw %>% dplyr::rename(avg_windspeed_idw = var1.pred)
+
+avg_windspeed.idw <- weather_wind.idw %>% dplyr::select(avg_windspeed_idw, geometry) 
+
+#join to precip fishnet, create a final fishnet
+fishnet_with_wind <- st_join(fishnet_precip, avg_windspeed.idw, join=st_equals)
+```
+
+```{r interpolation - avg temp, eval=FALSE, include=FALSE}
+#new df with only temp variable
+weather_temp <- weather_annual %>% dplyr::select(geometry, mean_ann_tmpf)
+
+#idw for temp surface. DW interpolation that uses a power parameter of 2 (idp=2.0).
+weather_temp.idw <- gstat::idw(mean_ann_tmpf ~ 1, weather_temp, newdata=fishnet_features, idp=2.0)
+
+#rename var1.pred
+weather_temp.idw <- weather_temp.idw %>% dplyr::rename(avg_temp_idw = var1.pred)
+
+avg_temp.idw <- weather_temp.idw %>% dplyr::select(avg_temp_idw, geometry) 
+
+#join to wind fishnet, create a final fishnet
+fishnet_with_temp <- st_join(fishnet_with_wind, avg_temp.idw, join=st_equals)
+```
+
+```{r interpolation - avg temp, eval=FALSE, include=FALSE}
+#new df with only humidity variable
+weather_hum <- weather_annual %>% dplyr::select(geometry, mean_ann_humidity)
+
+#idw for temp surface. DW interpolation that uses a power parameter of 2 (idp=2.0).
+weather_hum.idw <- gstat::idw(mean_ann_humidity ~ 1, weather_hum, newdata=fishnet_features, idp=2.0)
+
+#rename var1.pred
+weather_hum.idw <- weather_hum.idw %>% dplyr::rename(avg_hum_idw = var1.pred)
+
+avg_hum.idw <- weather_hum.idw %>% dplyr::select(avg_hum_idw, geometry) 
+
+#join to wind fishnet, create a final fishnet
+fishnet_with_hum <- st_join(fishnet_with_temp, avg_hum.idw, join=st_equals)
+```
+
+```{r all weather features maps}
+#maps with weather features
+
+#precip
+ggplot()+
+  geom_sf(data=weather_precip.idw, aes(fill=avg_precip_idw)) +
+  scale_fill_viridis(option="B") +
+  labs(title="Average Precipitation across Southern California",
+       fill="Avg Precip)",
+  subtitle="Inverse Distance Weighted Interpoloation - Weather Station to Fishnet Cell",
+  caption="Data source: ASOS, 2015-2019 Averages")+
+          mapTheme()
+
+#wind
+ggplot()+
+  geom_sf(data=weather_wind.idw, aes(fill=avg_windspeed_idw)) +
+  scale_fill_viridis(option="B") +
+  labs(title="Average Wind Speed across Southern California",
+       fill="Avg Wind Speed \n(tenths of m/sec)",
+  subtitle="Inverse Distance Weighted Interpoloation - Weather Station to Fishnet Cell",
+  caption="Data source: ASOS, 2015-2019 Averages")+
+          mapTheme()
+
+#temp
+ggplot()+
+  geom_sf(data=weather_temp.idw, aes(fill=avg_temp_idw)) +
+  scale_fill_viridis(option="B") +
+  labs(title="Average Temperature across Southern California",
+       fill="Avg Temperature",
+  subtitle="Inverse Distance Weighted Interpoloation - Weather Station to Fishnet Cell",
+  caption="Data source: ASOS")+
+          mapTheme()
+
+#humidity
+ggplot()+
+  geom_sf(data=weather_hum.idw, aes(fill=avg_hum_idw)) +
+  scale_fill_viridis(option="B") +
+  labs(title="Average Humidity across Southern California",
+       fill="Avg Humidity",
+  subtitle="Inverse Distance Weighted Interpoloation - Weather Station to Fishnet Cell",
+  caption="Data source: ASOS")+
+          mapTheme()
+
+
+```
+
+
+```{r}
+#rename to final fishnet
+fishnet_final <- fishnet_with_hum
+
+#create column for cvID
+#fishnet_final <- fishnet_final %>% 
+#  dplyr::mutate(cvID = sample(round(nrow(fishnet_final) / 24), 
+ #                      size=nrow(fishnet_final), replace = TRUE))
+
+```
+
+
+## Feature: Distance to nearest electric substation
+```{r distance to nearest electric substation}
+#more feature engineering...
+
+#read in electric substations
+electric_substations <- st_read("https://opendata.arcgis.com/datasets/7f37f2535d3144e898a53b9385737ee0_0.geojson") %>% 
+  dplyr::select(Y = Latitude, X = Longitute) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet_final))
+
+# calculate distance (meters) from each cell centroid to nearest electric substation and add as a variable
+fishnet_final <-
+  fishnet_final %>%
+    mutate(dist_elec_substation=st_nn(st_centroid(fishnet_final), electric_substations, 1))
+
+fishnet_final$dist_elec_substation <- as.numeric(fishnet_final$dist_elec_substation)  # Convert variable to numeric
+
+ggplot()+
+  geom_sf(data=fishnet_final, aes(fill=dist_elec_substation)) +
+  scale_fill_viridis(option="B") +
+  labs(title="Distance to Nearest Electrical Substation in Southern California",
+       fill="Distance \n(meters)",
+  subtitle="Per Fishnet Cell",
+  caption="Data source: California Open Data Portal")+
+          mapTheme()
+
+```
+
+## Distance to nearest CALFIRE or contract fire facility
+```{r}
+#read in facilities
+fire_facilities <- st_read("https://opendata.arcgis.com/datasets/1c8a93cac92f418e98a8fa6a2eaf4265_0.geojson") %>% 
+  dplyr::select(Y = LAT, X = LON) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet_final))
+
+# calculate distance (meters) from each cell centroid to nearest facility and add as a variable
+fishnet_final <-
+  fishnet_final %>%
+    mutate(dist_fire_facility=st_nn(st_centroid(fishnet_final), fire_facilities, 1))
+
+fishnet_final$dist_fire_facility <- as.numeric(fishnet_final$dist_fire_facility)  # Convert variable to numeric
+
+ggplot()+
+  geom_sf(data=fishnet_final, aes(fill=dist_fire_facility)) +
+  scale_fill_viridis(option="B") +
+  labs(title="Distance to Nearest Fire Facility in Southern California",
+       fill="Distance \n(meters)",
+  subtitle="Per Fishnet Cell",
+  caption="Data source: California Open Data Portal")+
+          mapTheme()
+
+```
+
+# Exploring the Spatial Process
+## Local Moran’s I
+```{r}
+library(spdep)
+#use {spdep}
+fishnet_final.nb <- poly2nb(as_Spatial(fishnet_final), queen=TRUE)
+## and neighborhoods to list of weights
+fishnet_final.weights <- nb2listw(fishnet_final.nb, style="W", zero.policy=TRUE)
+
+fishnet_final.localMorans <- 
+  cbind(
+    as.data.frame(localmoran(fishnet_final$n_fires_int, fishnet_final.weights)),
+    as.data.frame(fishnet_final)) %>% 
+    st_sf() %>%
+      dplyr::select(n_fires_int_Count = n_fires_int, 
+                    Local_Morans_I = Ii, 
+                    P_Value = `Pr(z > 0)`) %>%
+      mutate(Significant_Hotspots = ifelse(P_Value <= 0.05, 1, 0)) %>%
+      gather(Variable, Value, -geometry)
+
+```
+
+```{r eval=FALSE, include=FALSE}
+vars <- unique(fishnet_final.localMorans$Variable)
+varList <- list()
+
+for(i in vars){
+  varList[[i]] <- 
+    ggplot() +
+      geom_sf(data = filter(fishnet_final.localMorans, Variable == i), 
+              aes(fill = Value), colour=NA) +
+      scale_fill_viridis(name="") +
+      labs(title=i) +
+      mapTheme() + theme(legend.position="bottom")}
+
+do.call(grid.arrange,c(varList, ncol = 4, top = "Local Morans I statistics, Number of Fire Intersections"))
+
+```
+
+## Plotting Nearest Neighbor Distance to Hotspots
+
+```{r}
+# create Local Moran's I feature in fishnet_final
+fishnet_final <-
+  fishnet_final %>% 
+  mutate(n_fires_int.isSig = 
+           ifelse(spdep::localmoran(fishnet_final$n_fires_int, 
+                             fishnet_final.weights)[,5] <= 0.0000001, 1, 0))
+
+## there was an issue here with nn function from class, using st_nn instead
+fishnet_final <-
+  fishnet_final %>% 
+  mutate(n_fires_int.isSig.dist = 
+           st_nn(st_centroid(fishnet_final),(st_centroid(filter(fishnet_final, n_fires_int.isSig == 1))), 1))
+
+
+# Convert variable to numeric
+fishnet_final$n_fires_int.isSig.dist <-as.numeric(fishnet_final$n_fires_int.isSig.dist)
+
+
+ggplot() +
+      geom_sf(data = fishnet_final, aes(fill=n_fires_int.isSig.dist), colour=NA) +
+      scale_fill_viridis(name="st_nn \ndistance") +
+      labs(title="Distance to Highly Significant Fire Hotspots") +
+      mapTheme()
+```
+
+
+```{r}
+#fire not numeric
+fishnet_final <- fishnet_final %>% mutate(fire_yesno = case_when(fishnet_final$prev_fire == 1 ~ "yes",
+                                                                 fishnet_final$prev_fire == 0 ~ "no"))
+
+```
+
+#WORKING ON MODEL - GLM (poisson)
+```{r eval=FALSE, include=FALSE}
+#poisson. no need for train and test data since this is focusing on geospatial processes at play. 
+
+#why is n_fires_int.isSig.dist giving NA?
+
+reg1.poisson <- glm(n_fires_int ~ .,
+                  data=st_drop_geometry(fishnet_final) %>% dplyr::select(-fire_yesno, -uniqueID, -cvID), family="poisson")
+
+reg1.poisson.r2 <- pR2(reg1.poisson)[4]
+
+summary(reg1.poisson)
+print(reg1.poisson.r2)
+
+summ(reg1.poisson)
+
+```
+
+```{r eval=FALSE, include=FALSE}
+#geospatial risk model (poisson). since it's considering spatiality, could skip step above and go straight to cross validation
+
+#some "risk" variables to experiment with
+reg.vars = c("dist_elec_substation", "COUNTY_NAME", "VEG_MAJORITY", "dist_fire_facility", "IMPERV_SURFACE_PCT_MEAN", "ELEVATION_MEAN", "prev_fire", "avg_precip_idw", "avg_windspeed_idw", "avg_temp_idw", "avg_hum_idw")
+
+
+reg.cv <- crossValidate(
+  dataset = fishnet_final,
+  id = "cvID",
+  dependentVariable = "n_fires_int",
+  indVariables = reg.vars) %>%
+    dplyr::select(cvID = cvID, n_fires_int, Prediction, geometry)
+```
+
+
+```{r}
+#error message?
+#This hold out fold is 21 
+#Note: Using an external vector in selections is ambiguous.
+#i Use `all_of(dependentVariable)` instead of `dependentVariable` to silence this message.
+#i See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
+```
+
+
+```{r eval=FALSE, include=FALSE}
+reg.vars.spatial = c("dist_elec_substation", "COUNTY_NAME", "VEG_MAJORITY", "dist_fire_facility", "IMPERV_SURFACE_PCT_MEAN", "ELEVATION_MEAN", "prev_fire", "avg_precip_idw", "avg_windspeed_idw", "avg_temp_idw", "avg_hum_idw", "n_fires_int.isSig", "n_fires_int.isSig.dist")
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+#eventually want to do spatial cv with census tracts; need to extrapolate from grid cells to census tracts earlier
+reg.cv.spatial <- crossValidate(
+  dataset = fishnet_final,
+  id = "cvID",
+  dependentVariable = "n_fires_int",
+  indVariables = reg.vars.spatial) %>%
+    dplyr::select(cvID = cvID, n_fires_int, Prediction, geometry)
+
+```
+
+
+```{r}
+reg.summary <- 
+  rbind(
+    mutate(reg.cv, Error = Prediction - n_fires_int,
+                   Regression = "Random k-fold CV"),
+    
+    mutate(reg.cv.spatial, Error = Prediction - n_fires_int,
+                          Regression = "Random k-fold CV - with Spatial Features")) 
+
+error_by_reg_and_fold <- reg.summary %>%
+    group_by(cvID, Regression) %>% 
+    dplyr::summarise(Mean_Error = mean(Prediction - n_fires_int, na.rm = T),
+              MAE = mean(abs(Mean_Error), na.rm = T),
+                            SD_MAE = mean(abs(Mean_Error), na.rm = T)) %>% ungroup()
+
+
+## plot histogram of OOF (out of fold) errors
+error_by_reg_and_fold %>%
+  ggplot(aes(MAE)) + 
+    geom_histogram(bins = 30, colour="black", fill = "orange") +
+    facet_wrap(~Regression) +  
+    geom_vline(xintercept = 0) + 
+    labs(title="Distribution of Mean Absolute Error", subtitle = "100 k-fold Cross Validation vs. Spatial 'Leave-One-Group-Out' (County) Cross Validation",
+         x="Mean Absolute Error", y="Count")
+
+
+```
+```{r}
+st_drop_geometry(error_by_reg_and_fold) %>%
+  group_by(Regression) %>% 
+    dplyr::summarize(Mean_MAE = round(mean(MAE), 2),
+              SD_MAE = round(sd(MAE), 2)) %>%
+  kable(caption = "Mean Absolute Error, By Regression") %>%
+    kable_styling("striped", full_width = F) 
+```
+```{r}
+#mapping predictions - would this be for the next five years?
+
+  reg.summary %>%
+  ggplot()+
+    geom_sf(aes(fill = Prediction)) +
+    facet_wrap(~Regression) +
+    scale_fill_viridis(option="B") +
+    labs(title = "Predicted Count of Wildfire Incidents, by Regression") +
+    mapTheme() + theme(legend.position="bottom") + theme(strip.text.x = element_text(size=9))
+```
+
+# MODEL OPTION 2: WORKING GLM (binomial)
+```{r}
+
+fishnet_final$prev_fire <- as.numeric(fishnet_final$prev_fire)  # Convert variable to numeric
+```
+
+
+```{r glm - binomial}
+
+set.seed(3456)
+trainIndex <- createDataPartition(fishnet_final$prev_fire, p = .70,
+                                list = FALSE,
+                               times = 1)
+dataTrain <- fishnet_final[ trainIndex,]
+dataTest  <- fishnet_final[-trainIndex,]
+
+reg.binomial<- glm(prev_fire ~ .,
+                  data=st_drop_geometry(fishnet_final) %>% dplyr::select(-fire_yesno, -avg_hum_idw, -uniqueID, -n_fires_int, n_fires_int.isSig.dist, n_fires_int.isSig), family="binomial")
+
+reg.binomial.r2 <- pR2(reg.binomial)[4]
+
+summary(reg.binomial)
+print(reg.binomial.r2)
+
+```
+
+```{r reg1 stargazer table}
+# stargazer table for results of reg.binomial
+library(stargazer)
+stargazer(reg1,type="html", title="Results of reg.binomial",
+          single.row = TRUE, # to put coefficients and standard errors on same line
+          font.size="normalsize",
+          notes.append=FALSE,
+          notes = c("<sup>&sstarf;</sup>p<0.1; <sup>&sstarf;&sstarf;</sup>p<0.05; <sup>&sstarf;&sstarf;&sstarf;</sup>p<0.01"),
+          no.space = TRUE, # to remove the spaces after each line of coefficients
+          column.sep.width = "5pt") # to reduce column width
+
+```
+
+```{r reg1 testprobs}
+testProbs <- data.frame(Outcome = as.factor(dataTest$prev_fire),
+                        Probs = predict(reg.binomial, dataTest, type= "response"))
+
+testProbs <- 
+  testProbs %>%
+  mutate(predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)))
+```
+
+
+```{r reg1 testprobs}
+
+xtab.reg1 <-caret::confusionMatrix(testProbs$predOutcome, testProbs$Outcome, 
+                       positive = "1")
+
+as.matrix(xtab.reg1) %>% kable(caption = "Confusion Matrix for reg1 Model") %>% kable_styling("striped", full_width = T, font_size = 14, position = "left")
+
+as.matrix(xtab.reg1, what="classes") %>% kable(caption = "Confusion Matrix for reg1 Model - Statistics") %>% kable_styling(font_size = 14, full_width = T,
+                bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+ggplot(testProbs, aes(d = as.numeric(Outcome), m = Probs)) +
+  geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
+  style_roc(theme = theme_grey) +
+  geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
+  labs(title = "Receiver Operating Characteristic (ROC) Curve - reg2 Model")
+```
+```{r}
+pROC::auc(testProbs$Outcome, testProbs$Probs) %>% kable(caption = "Area Under the Curve (AUC)") %>% kable_styling(position ="left", full_width = T, font_size = 18) 
+
+```
+
+# best threshold?
+
+
+
+
+
+#cross validation
+```{r}
+ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
+
+#str(fishnet_final$fire_yesno)
+#fishnet_final$fire_yesno <- as.factor(fishnet_final$fire_yesno) 
+#fishnet_final$fire_yesno <- fct_rev(fishnet_final$fire_yesno)
+
+#factor(fishnet_final$fire_yesno, levels=rev(levels(fishnet_final$fire_yesno)))
+
+
+cvFit.reg1 <- train(fire_yesno ~ .,
+                  data=st_drop_geometry(fishnet_final) %>% dplyr::select(-prev_fire, -avg_hum_idw, -uniqueID, -n_fires_int, n_fires_int.isSig.dist, n_fires_int.isSig), 
+                method="glm", family="binomial",
+                metric="ROC", trControl = ctrl)
+```
+
+```{r}
+print(cvFit.reg1) %>% kable(caption="Cross-Validated reg1 Results") %>% kable_styling(font_size = 14, full_width = T,bootstrap_options = c("striped", "hover"))
+
+```
+
+
+```{r reg1 testprobs, eval=FALSE, include=FALSE}
+ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
+  geom_density() +
+  facet_grid(Outcome ~ .) +
+  scale_fill_manual(values = palette2) + xlim(0, 1) +
+  labs(x = "Fire Occurred or Not (outcome variable)", y = "Density of Probabilities",
+       title = "Distribution of Predicted Probabilities by Observed Outcome") +
+  plotTheme() + theme(strip.text.x = element_text(size = 18),
+        legend.position = "none")
+
+ggplot(testProbs, aes(d = as.numeric(Outcome), m = Probs)) +
+  geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
+  style_roc(theme = theme_grey) +
+  geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
+  labs(title = "Receiver Operating Characteristic (ROC) Curve - Fire Probability Model", subtitle="Area Under the Curve = 0.xx")+ plotTheme()
+
+
+pROC::auc(testProbs$Outcome, testProbs$Probs) %>% kable(caption = "Area Under the Curve (AUC)") %>% kable_styling(position ="left", full_width = T, font_size = 18) 
+
+```
+```{r}
+testProbs <- 
+    data.frame(uniqueID = dataTest$uniqueID,
+               Outcome = dataTest$prev_fire,
+               probs = predict(reg.binomial, dataTest, type="response"),
+               predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)                  ))
+```
+
+
+
+```{r}
+
+iterateThresholds <- function(data) {
+  x = .01
+  all_prediction <- data.frame()
+  while (x <= 1) {
+  
+  this_prediction <-
+      testProbs %>%
+      mutate(predOutcome = ifelse(probs > x, 1, 0)) %>%
+      dplyr::count(predOutcome, Outcome) %>%
+      dplyr::summarize(sum_TN = sum(n[predOutcome==0 & Outcome==0]),
+                sum_TP = sum(n[predOutcome==1 & Outcome==1]),
+                sum_FN = sum(n[predOutcome==0 & Outcome==1]),
+                sum_FP = sum(n[predOutcome==1 & Outcome==0]),
+            total=sum(n)) %>%
+    mutate(True_Positive = sum_TP / total,
+         True_Negative = sum_TN / total,
+         False_Negative = sum_FN / total,
+         False_Positive = sum_FP / total,
+         Accuracy = (sum_TP + sum_TN) / total, Threshold = x)
+  
+  all_prediction <- rbind(all_prediction, this_prediction)
+  x <- x + .01
+  }
+return(all_prediction)
+}
+
+```
+
+```{r}
+
+whichThreshold <- iterateThresholds(testProbs)
+
+table_threshold<-kable(whichThreshold) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)%>%
+  scroll_box(width = "100%", height = "500px")
+
+table_threshold
+```
+
+# IDEAL THRESHOLD: 0.55 (based on accuracy alone)
+```{r}
+ggplot(testProbs, aes(d = as.numeric(Outcome), m = probs)) +
+  geom_roc(n.cuts = 55, labels = FALSE, colour = "#FE9900") +
+  style_roc(theme = theme_grey) +
+  geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
+  labs(title = "Receiver Operating Characteristic (ROC) Curve")
+```
+
+
+```{r}
+predict_fishnet <- 
+  data.frame(uniqueID = fishnet_final$uniqueID,
+  Outcome = fishnet_final$prev_fire,
+  Probs = predict(reg.binomial, fishnet_final, type="response"))
+
+predict_fishnet <- 
+  predict_fishnet %>%
+  mutate(predOutcome  = as.factor(ifelse(predict_fishnet$Probs > 0.43, 1, 0)))
+
+
+fishnet_final_preds <- cbind(fishnet_final,predict_fishnet)
+```
+
+## EVACUATION KIT DISTRIBUTION
+once we have fire probability per fishnet, use areal interpolation (make estimates from a source set of polygons - the fishnet grid cells - to an overlapping, incongruent set of target polygons - census tracts)
+the fire probability will be one part of the fire risk score.
+```{r}
+library(tidycensus)
+library(dplyr)
+projection <- "EPSG:3310"
+
+#Jenna
+census_api_key("41e1c0d912341017fa6f36a5da061d3b23de335e", overwrite=TRUE)
+
+#Jeff
+#census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", overwrite=TRUE)
+
+acs_vars <- c("B25026_001E","B02001_002E","B15001_050E",
+                         "B15001_009E","B19013_001E","B25058_001E",
+                         "B06012_002E", "B01001_048E", "B01001_049E",
+                         "B01001_024E", "B01001_025E", "B07013_002E")
+
+countiesOfInterest <- c('Los Angeles', 'Ventura', 'Orange', 'San Diego', 'Santa Barbara')
+
+tracts17 <-
+    get_acs(geography = "tract", 
+            variables = acs_vars, 
+            year=2017,
+            state='CA', 
+            county=countiesOfInterest,
+            geometry=T, 
+            output="wide") %>%
+        st_transform(projection) %>%
+        dplyr::rename(TotalPop = B25026_001E,
+               White = B02001_002E,
+               MedianHouseholdIncome = B19013_001E,
+               MedianRent = B25058_001E,
+               Poverty = B06012_002E,
+               HousingUnits = B07013_002E) %>%
+        dplyr::select(-NAME, -starts_with("B")) %>%
+        mutate(pctNonWhite = ifelse(TotalPop < White, 0, ifelse(TotalPop > 0, 1 -(White / TotalPop),0)),
+               pctPoverty = ifelse(TotalPop > 0, Poverty / TotalPop, 0))
+
+
+tracts17 <- tracts17 %>% filter(GEOID != '06037599100') %>% filter(GEOID != '06037599000') %>% filter(GEOID != '06083990000') %>% filter(GEOID != '06111980000') %>% filter(GEOID != '06083980100') %>% filter(GEOID != '06111990100')
+
+tracts17 <- tracts17 %>% st_transform(st_crs(fishnet_final))
+
+
+
+# ---- Mapping census tracts, no islands
+map.CensusTracts <-
+  ggplot()+
+  geom_sf(data = tracts17, fill="#253494", color="black", alpha=0.5)+
+  labs(title = "Southern California Census Tracts") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+
+map.CensusTracts
+
+```
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+# go from fishnet cells to census tracts
+# instead of areal, st_interpolate_aw to go from grid cells --> census tract
+
+#interpolate from tracts to fishnet. Look up the `extensive` parameter.
+```
+
+```{r}
+fishnet_final_preds_only <- fishnet_final_preds %>% dplyr::select(uniqueID, Probs, geometry)
+```
+
+```{r eval=FALSE, include=FALSE}
+interpolate_probs <-
+  dplyr::select(fishnet_final_preds, Probs) %>%
+  st_interpolate_aw(., tracts17, extensive = T) %>% st_sf()
+
+interpolation_tracts <- st_join(interpolate_probs, tracts17, join=st_equals)
+fireProb_tracts <- interpolation_tracts %>% dplyr::select(GEOID, geometry, Probs)
+fireProb_tracts_nogeom <- interpolation_tracts %>% dplyr::select(GEOID, Probs) %>% st_drop_geometry()
+```
+
+
+```{r eval=FALSE, include=FALSE}
+d<- ggplot() + geom_sf(data=interpolate_probs, aes(fill = Probs), colour="white") +
+  scale_fill_viridis(option="B")+theme(legend.position = "none")+ labs(title="Fire Probability by Census Tract", subtitle="Los Angeles County")+mapTheme()
+
+d
+```
+
+
+```{r eval=FALSE, include=FALSE}
+fishnet_final_clipped <-  st_intersection(tracts17, fishnet_final)
+margin = theme(plot.margin = unit(c(-0.5,0,0,0), "cm"))
+
+grid.arrange(c, d, ncol=2 + margin)
+
+c<- ggplot() + geom_sf(data=fishnet_final_clipped, aes(fill = MEAN_THRT), color=NA)+ geom_sf(data=tracts17, color="GREY", fill="transparent") + scale_fill_viridis(option="B")+theme(legend.position = "none")+ labs(title="Fire Probability by Fishnet Cell", subtitle="Los Angeles County")+mapTheme()
+ 
+b
+```
+
+
+## Then, pull in ACS data for southern california by tract.

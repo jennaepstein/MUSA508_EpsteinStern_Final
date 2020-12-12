@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata xml:lang="en"><Esri><CreaDate>20201203</CreaDate><CreaTime>14485900</CreaTime><ArcGISFormat>1.0</ArcGISFormat><SyncOnce>TRUE</SyncOnce><DataProperties><lineage><Process ToolSource="c:\program files (x86)\arcgis\desktop10.7\ArcToolbox\Toolboxes\Spatial Analyst Tools.tbx\ZonalStatisticsAsTable" Date="20201203" Time="144859">ZonalStatisticsAsTable fishnet_veg_elev FID imperv_est_ex C:\Users\jenna\Documents\GitHub\MUSA508-final\mean_pct_imperv DATA MEAN</Process></lineage></DataProperties></Esri></metadata>
