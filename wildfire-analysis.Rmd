@@ -233,14 +233,7 @@ southcoast_CalVeg <- st_read(dsn="data/S_USA.EVMid_R05_SouCoast.gdb", layer="EVM
 ```
 
 
-## TODO: CREATE AN AT-NEED POPULATION SCORE
 ```{r atNeedPopulations}
-
-## I'm not sure if there's a dependent variable that can be used here...thinking it may just need to be a composite score of a bunch of things that we know "contribute to low levels of disaster preparedness"
-
-# Studies have found that variables such as poor financial security, disability or ethnic minority status also contribute to low levels of disaster preparedness.. Many of these attributes cluster together, exacerbating risk 
-
-# https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20170510_Emergency%20Planning%20&%20Response%20with%20Census%20Bureau%20&%20NOAA%20Resources.pdf
 
 projection <- "EPSG:6423"
 census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", install=TRUE, overwrite=TRUE)
@@ -269,7 +262,7 @@ getCACensusTractDataByYear <- function(year) {
                Poverty = "B06012_002E",
                HousingUnits = "B07013_002E"
         ) %>%
-        dplyr::select(-NAME, -starts_with("B")) %>%
+        dplyr::select(starts_with("B")) %>%
         mutate(pctNonWhite = ifelse(TotalPop < White, 0, ifelse(TotalPop > 0, 1 -(White / TotalPop),0)),
                pctBachelors = ifelse(TotalPop > 0, ((Female1824Bachelor + Male1824Bachelor) / TotalPop),0),
                pctPoverty = ifelse(TotalPop > 0, Poverty / TotalPop, 0),
@@ -333,8 +326,8 @@ totalHousingUnits <- 0
 addComma <- function(num){ format(num, big.mark=",")}
 
 while(budgetRemaining > costOfKit) {
-    
     housingUnits <- tracts17_prioritized[tract.i,]$HousingUnits
+    if (housingUnits == 0) { tract.i <- tract.i+1; break; }
     costForTract <- housingUnits*costOfKit
     print(paste("Tract #",tracts17_prioritized[tract.i,]$GEOID, " is priority #", tract.i, " and has ", addComma(housingUnits), " housing units, Cost of kits: $",addComma(costForTract), sep=""))
     if(costForTract <= budgetRemaining-costForTract) {

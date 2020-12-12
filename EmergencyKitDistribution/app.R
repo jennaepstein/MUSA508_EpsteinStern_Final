@@ -76,7 +76,7 @@ ui <- fluidPage(
                         "Budget:",
                         min = 100000,
                         max = 10000000,
-                        value = 500000,
+                        value = 2500000,
                         step = 100000,
                         width = '100%'),
             sliderInput("costOfKit",
