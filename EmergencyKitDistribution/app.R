@@ -14,6 +14,62 @@ library(sf)
 library(kableExtra)
 library(rmarkdown)
 
+addComma <- function(num){ format(num, big.mark=",")}
+
+getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTract = 1.0, weight = 0.5){
+    
+    d <- finalDataSet %>%
+        mutate(isReceivingKits = 0) %>%
+        mutate(totalKitsToSend = 0) %>%
+        mutate(priorityRanking = FireProbNormalized*weight + RPL_THEMES*(1-weight)) %>%
+        arrange(desc(priorityRanking))
+
+    numOfKits <- (budget / costOfKit)
+    
+    budgetRemaining <- budget
+    tract.i <- 1
+    totalHousingUnits <- 0
+    
+    while(budgetRemaining > costOfKit) {
+        housingUnits <- floor(d[tract.i,]$HousingUnits * pctOfTract)
+        if (housingUnits == 0) { tract.i <- tract.i+1; next; }
+        costForTract <- housingUnits*costOfKit
+        #   print(paste("Tract #",d[tract.i,]$FIPS, " is priority #", tract.i, " and has ", addComma(housingUnits), " housing units, Cost of kits: $",addComma(costForTract), sep=""))
+        if(costForTract <= budgetRemaining-costForTract) {
+            #      print(paste("Budget remaining: $", addComma(budgetRemaining),sep=""))
+            totalHousingUnits <- totalHousingUnits + housingUnits
+            kitsSent <- housingUnits
+        } else {
+            possibleHousingUnits <- floor(budgetRemaining/costOfKit)
+            totalHousingUnits <- totalHousingUnits + possibleHousingUnits
+            #       print(paste("Cost for whole tract exceeds remaining budget, partial distribution to",addComma(floor(possibleHousingUnits))," housing units possible"))
+            kitsSent <- possibleHousingUnits
+        }
+        budgetRemaining <- budgetRemaining - costForTract
+        d[tract.i,]$isReceivingKits <- 1
+        d[tract.i,]$totalKitsToSend <- kitsSent
+        tract.i <- tract.i + 1  
+    }
+    #  print(paste(addComma(totalHousingUnits),"housing units in", tract.i, "LA County tracts can be served by investing $",addComma(budget),"in the emergency kit allocation program (not including overhead costs)"))
+    attr(d, "budget") <- budget
+    attr(d, "costOfKit") <- costOfKit
+    attr(d, "pctOfTract") <- pctOfTract
+    attr(d, "weight") <- weight
+    return(d)
+}
+
+getServedTractsPlot <- function(df, st){
+    allocationMap <- ggplot(df) +
+        geom_sf(data = st_union(df))+
+        geom_sf(aes(fill = isReceivingKits),lwd = 0) +
+        labs(subtitle = st, title = paste("Budget: $",addComma(attributes(df)$budget),"- Kit cost: $",attributes(df)$costOfKit)) +
+        theme(plot.title = element_text(size=14)) +
+        theme(plot.subtitle = element_text(size=10)) +
+        theme(legend.position = "none")
+    
+    allocationMap
+}
+
 projection <- "EPSG:6423"
 census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", install=TRUE, overwrite=TRUE)
 
