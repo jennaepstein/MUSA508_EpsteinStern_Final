@@ -14,115 +14,19 @@ library(sf)
 library(kableExtra)
 library(rmarkdown)
 
-addComma <- function(num){ format(num, big.mark=",")}
-
-getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTract = 1.0, weight = 0.5){
-    d <- finalDataSet %>%
-        mutate(isReceivingKits = 0) %>%
-        mutate(totalKitsToSend = 0) %>%
-        mutate(priorityRanking = FireProbNormalized*weight + RPL_THEMES*(1-weight)) %>%
-        arrange(desc(priorityRanking))
-    
-    numOfKits <- (budget / costOfKit)
-    
-    budgetRemaining <- budget
-    tract.i <- 1
-    totalHousingUnits <- 0
-    
-    while(budgetRemaining > costOfKit) {
-        housingUnits <- floor(d[tract.i,]$HousingUnits * pctOfTract)
-        if (housingUnits == 0) { tract.i <- tract.i+1; next; }
-        costForTract <- housingUnits*costOfKit
-        #   print(paste("Tract #",d[tract.i,]$FIPS, " is priority #", tract.i, " and has ", addComma(housingUnits), " housing units, Cost of kits: $",addComma(costForTract), sep=""))
-        if(costForTract <= budgetRemaining-costForTract) {
-            #      print(paste("Budget remaining: $", addComma(budgetRemaining),sep=""))
-            totalHousingUnits <- totalHousingUnits + housingUnits
-            kitsSent <- housingUnits
-        } else {
-            possibleHousingUnits <- floor(budgetRemaining/costOfKit)
-            totalHousingUnits <- totalHousingUnits + possibleHousingUnits
-            #       print(paste("Cost for whole tract exceeds remaining budget, partial distribution to",addComma(floor(possibleHousingUnits))," housing units possible"))
-            kitsSent <- possibleHousingUnits
-        }
-        budgetRemaining <- budgetRemaining - costForTract
-        d[tract.i,]$isReceivingKits <- 1
-        d[tract.i,]$totalKitsToSend <- kitsSent
-        tract.i <- tract.i + 1  
-    }
-    #  print(paste(addComma(totalHousingUnits),"housing units in", tract.i, "LA County tracts can be served by investing $",addComma(budget),"in the emergency kit allocation program (not including overhead costs)"))
-    attr(d, "budget") <- budget
-    attr(d, "costOfKit") <- costOfKit
-    attr(d, "pctOfTract") <- pctOfTract
-    attr(d, "weight") <- weight
-    return(d)
-}
-
-getServedTractsPlot <- function(df, st){
-    allocationMap <- ggplot(df) +
-        geom_sf(data = st_union(df))+
-        geom_sf(aes(fill = isReceivingKits),lwd = 0) +
-        labs(subtitle = st, title = paste("Budget: $",addComma(attributes(df)$budget),"- Kit cost: $",attributes(df)$costOfKit)) +
-        theme(plot.title = element_text(size=14)) +
-        theme(plot.subtitle = element_text(size=10)) +
-        theme(legend.position = "none")
-    
-    allocationMap
-}
-
 projection <- "EPSG:6423"
-census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", install=TRUE, overwrite=TRUE)
 
-countiesOfInterest <- c('Los Angeles')
+shinyData <- st_read("../finalDataSet-forShiny.shp") %>%
+    st_transform(projection)
 
-variablesOfInterest <- c("B25026_001E","B02001_002E","B15001_050E",
-                         "B15001_009E","B19013_001E","B25058_001E",
-                         "B06012_002E", "B01001_048E", "B01001_049E",
-                         "B01001_024E", "B01001_025E", "B07013_002E")
-
-getCACensusTractDataByYear <- function(year) {
-    get_acs(geography = "tract", variables = variablesOfInterest, 
-            year=year, state='CA', county=countiesOfInterest, geometry=T, output="wide") %>%
-        st_transform(projection) %>%
-        rename(TotalPop = "B25026_001E",
-               White = "B02001_002E",
-               Female1824Bachelor = "B15001_050E",
-               Male1824Bachelor = "B15001_009E",
-               Female80to84 = "B01001_048E",
-               Female85orMore = "B01001_049E",
-               Male80to84 = "B01001_024E",
-               Male85orMore = "B01001_025E", 
-               MedianHouseholdIncome = "B19013_001E",
-               MedianRent = "B25058_001E",
-               Poverty = "B06012_002E",
-               HousingUnits = "B07013_002E"
-        ) %>%
-        dplyr::select(-NAME, -starts_with("B")) %>%
-        mutate(pctNonWhite = ifelse(TotalPop < White, 0, ifelse(TotalPop > 0, 1 -(White / TotalPop),0)),
-               pctBachelors = ifelse(TotalPop > 0, ((Female1824Bachelor + Male1824Bachelor) / TotalPop),0),
-               pctPoverty = ifelse(TotalPop > 0, Poverty / TotalPop, 0),
-               pctOver80 = ifelse(TotalPop> 0, ((Female80to84 + Female85orMore + Male80to84 + Male85orMore) / TotalPop), 0),
-               year=as.character(year))
-}
-
-tracts17 <- getCACensusTractDataByYear(2017) %>%
-    filter(GEOID != '06037599100') %>%
-    filter(GEOID != '06037599000')
-
-tracts17_prioritized <- tracts17 %>%
-    mutate(priorityScore = pctNonWhite) %>%
-    arrange(desc(priorityScore))
-
-tracts17_prioritized <- tracts17_prioritized %>%
-    mutate(isReceivingKits = 0)
-
-
+addComma <- function(num){ format(num, big.mark=",")}
 
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
 
     # Application title
-    titlePanel("Allocating Emergency Readiness Kits in L.A. County (funded by REI)"),
+    titlePanel("Allocating Emergency Readiness Kits in L.A. County"),
 
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
@@ -138,11 +42,19 @@ ui <- fluidPage(
                         "Cost of kits:",
                         min = 10,
                         max = 250,
-                        value = 40,
+                        value = 20,
                         step = 5,
                         width = '100%'),
+            sliderInput("pctOfTract",
+                        "Percent of households in tract to receive kit",
+                        min = 5,
+                        max = 100,
+                        value = 80,
+                        step = 5,
+                        post = '%',
+                        width = '100%'),
             sliderInput("risk_weight",
-                        "Weighting algorithm (fire risk vs. vulnerable population)",
+                        "Algorithm weight (100% means only prioritize based on fire probability)",
                         min = 0,
                         max = 100,
                         value = 50,
@@ -158,48 +70,67 @@ ui <- fluidPage(
     )
 )
 
-
-# Define server logic required to draw a histogram
 server <- function(input, output, session) {
-    
     output$allocationMap <- renderPlot ({
-        budget <- input$budget
-        costOfKit <- input$costOfKit
-        pctOfTract <- 1.0
-        numOfKits <- (budget / costOfKit)
-        
-        budgetRemaining <- budget
-        tract.i <- 1
-        totalHousingUnits <- 0
-        
-        addComma <- function(num){ format(num, big.mark=",")}
-        
-        while(budgetRemaining > costOfKit) {
-            
-            housingUnits <- tracts17_prioritized[tract.i,]$HousingUnits
-            costForTract <- housingUnits*costOfKit
-            print(paste("Tract #",tracts17_prioritized[tract.i,]$GEOID, " is priority #", tract.i, " and has ", addComma(housingUnits), " housing units, Cost of kits: $",addComma(costForTract), sep=""))
-            if(costForTract <= budgetRemaining-costForTract) {
-                print(paste("Budget remaining: $", addComma(budgetRemaining),sep=""))
-                totalHousingUnits <- totalHousingUnits + housingUnits
-            } else {
-                possibleHousingUnits <- floor(budgetRemaining/costOfKit)
-                totalHousingUnits <- totalHousingUnits + possibleHousingUnits
-                print(paste("Cost for whole tract exceeds remaining budget, partial distribution to",addComma(floor(possibleHousingUnits))," housing units possible"))
+            print("Running function")
+            getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTract = 1.0, weight = 0.5){
+                 d <- shinyData %>%
+                    mutate(isReceivingKits = 0) %>%
+                    mutate(totalKitsToSend = 0) %>%
+                    mutate(priorityRanking = FrPrbNr*weight + RPL_THEMES*(1-weight)) %>%
+                    arrange(desc(priorityRanking))
+                
+                numOfKits <- (budget / costOfKit)
+                
+                budgetRemaining <- budget
+                tract.i <- 1
+                totalHousingUnits <- 0
+                
+                while(budgetRemaining > costOfKit) {
+                    housingUnits <- floor(d[tract.i,]$HsngUnt * pctOfTract)
+                    if (housingUnits == 0) { tract.i <- tract.i+1; next; }
+                    costForTract <- housingUnits*costOfKit
+                    #print(paste("Tract #",d[tract.i,]$FIPS, " is priority #", tract.i, " and has ", addComma(housingUnits), " housing units, Cost of kits: $",addComma(costForTract), sep=""))
+                    if(costForTract <= budgetRemaining-costForTract) {
+                        #      print(paste("Budget remaining: $", addComma(budgetRemaining),sep=""))
+                        totalHousingUnits <- totalHousingUnits + housingUnits
+                        kitsSent <- housingUnits
+                    } else {
+                        possibleHousingUnits <- floor(budgetRemaining/costOfKit)
+                        totalHousingUnits <- totalHousingUnits + possibleHousingUnits
+                        #       print(paste("Cost for whole tract exceeds remaining budget, partial distribution to",addComma(floor(possibleHousingUnits))," housing units possible"))
+                        kitsSent <- possibleHousingUnits
+                    }
+                    budgetRemaining <- budgetRemaining - costForTract
+                    d[tract.i,]$isReceivingKits <- 1
+                    d[tract.i,]$totalKitsToSend <- kitsSent
+                    tract.i <- tract.i + 1  
+                }
+                #  print(paste(addComma(totalHousingUnits),"housing units in", tract.i, "LA County tracts can be served by investing $",addComma(budget),"in the emergency kit allocation program (not including overhead costs)"))
+                attr(d, "budget") <- budget
+                attr(d, "costOfKit") <- costOfKit
+                attr(d, "pctOfTract") <- pctOfTract
+                attr(d, "weight") <- weight
+                return(d)
             }
-            budgetRemaining <- budgetRemaining - costForTract
-            tract.i <- tract.i + 1  
-            tracts17_prioritized[tract.i,]$isReceivingKits <- 1
-            #print("...")
-        }
-        
-     ggplot(tracts17_prioritized) +
-            geom_sf(data = st_union(tracts17_prioritized))+
-            geom_sf(aes(fill = isReceivingKits),lwd = 0) +
-            labs(subtitle = "Algorithm is evenly weighted between fire risk and vulnerable populations", title = paste("Budget: $",addComma(budget)," - Kit cost: $",addComma(costOfKit),sep="")) +
-            theme(plot.title = element_text(size=22)) +
-            theme(legend.position = "none")
-        })
+            
+            getServedTractsPlot <- function(df, ttl, st){
+                allocationMap <- ggplot(df) +
+                    geom_sf(data = st_union(df))+
+                    geom_sf(aes(fill = isReceivingKits),lwd = 0) +
+                    labs(subtitle = st, title = ttl) +
+                    theme(plot.title = element_text(size=22)) +
+                    theme(plot.subtitle = element_text(size=14)) +
+                    theme(legend.position = "none")
+                
+                allocationMap
+            }
+            dt <- getPrioritizedCensusTracts(budget=input$budget, costOfKit = input$costOfKit, pctOfTract = (input$pctOfTract/100), weight= input$risk_weight)
+            print(head(dt))
+            t <- paste("Sending",addComma(sum(dt$totalKitsToSend)),"kits to",addComma(sum(dt$isReceivingKits)),"LA county census tracts")
+            st <- paste("Budget: $",addComma(input$budget),", Kit cost: $",input$costOfKit,sep="")
+            getServedTractsPlot(dt,t,st)
+    })
     }
 
 # Run the application 
