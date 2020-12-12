@@ -26,7 +26,7 @@ addComma <- function(num){ format(num, big.mark=",")}
 ui <- fluidPage(
 
     # Application title
-    titlePanel("Allocating Emergency Readiness Kits in L.A. County"),
+    titlePanel("Allocating Emergency Supply Kits in L.A. County"),
 
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
@@ -35,7 +35,7 @@ ui <- fluidPage(
                         "Budget:",
                         min = 100000,
                         max = 10000000,
-                        value = 2500000,
+                        value = 1000000,
                         step = 100000,
                         width = '100%'),
             sliderInput("costOfKit",
@@ -65,7 +65,9 @@ ui <- fluidPage(
 
         # Show a plot of the generated distribution
         mainPanel(
-           plotOutput("allocationMap")
+            plotOutput("allocationMap"),
+            h3("Tracts receiving kits"),
+            DT::dataTableOutput('table')
         )
     )
 )
@@ -87,42 +89,48 @@ server <- function(input, output, session) {
     }) %>% debounce(1000)
     print(d_risk_weight)
     
-    output$allocationMap <- renderPlot ({
-            getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTract = 1.0, weight = 0.5){
-                 d <- shinyData %>%
-                    mutate(isReceivingKits = 0) %>%
-                    mutate(totalKitsToSend = 0) %>%
-                    mutate(priorityRanking = FrPrbNr*weight + RPL_THEMES*(1-weight)) %>%
-                    arrange(desc(priorityRanking))
-                
-                numOfKits <- (budget / costOfKit)
-                
-                budgetRemaining <- budget
-                tract.i <- 1
-                totalHousingUnits <- 0
-                
-                while(budgetRemaining > costOfKit) {
-                    housingUnits <- floor(d[tract.i,]$HsngUnt * pctOfTract)
-                    if (housingUnits == 0) { tract.i <- tract.i+1; next; }
-                    costForTract <- housingUnits*costOfKit
-                    if(costForTract <= budgetRemaining) {
-                        kitsSent <- housingUnits
-                    } else {
-                        possibleHousingUnits <- floor(budgetRemaining/costOfKit)
-                        kitsSent <- possibleHousingUnits
-                    }
-                    budgetRemaining <- budgetRemaining - costForTract
-                    d[tract.i,]$isReceivingKits <- 1
-                    d[tract.i,]$totalKitsToSend <- kitsSent
-                    tract.i <- tract.i + 1  
-                }
-                attr(d, "budget") <- budget
-                attr(d, "costOfKit") <- costOfKit
-                attr(d, "pctOfTract") <- pctOfTract
-                attr(d, "weight") <- weight
-                return(d)
-            }
+    getPrioritizedCensusTracts <- reactive({
+        getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTract = 1.0, weight = 0.5){
+            d <- shinyData %>%
+                mutate(isReceivingKits = 0) %>%
+                mutate(totalKitsToSend = 0) %>%
+                mutate(totalCost = 0) %>%
+                mutate(priorityRanking = (FrPrbNr*weight + RPL_THEMES*(1-weight)) * 100) %>%
+                arrange(desc(priorityRanking))
             
+            numOfKits <- (budget / costOfKit)
+            
+            budgetRemaining <- budget
+            tract.i <- 1
+            totalHousingUnits <- 0
+            
+            while(budgetRemaining > costOfKit) {
+                housingUnits <- floor(d[tract.i,]$HsngUnt * pctOfTract)
+                if (housingUnits == 0) { tract.i <- tract.i+1; next; }
+                costForTract <- housingUnits*costOfKit
+                if(costForTract <= budgetRemaining) {
+                    kitsSent <- housingUnits
+                } else {
+                    possibleHousingUnits <- floor(budgetRemaining/costOfKit)
+                    kitsSent <- possibleHousingUnits
+                }
+                budgetRemaining <- budgetRemaining - costForTract
+                d[tract.i,]$isReceivingKits <- 1
+                d[tract.i,]$totalKitsToSend <- kitsSent
+                d[tract.i,]$totalCost <- kitsSent * costOfKit
+                tract.i <- tract.i + 1  
+            }
+            attr(d, "budget") <- budget
+            attr(d, "costOfKit") <- costOfKit
+            attr(d, "pctOfTract") <- pctOfTract
+            attr(d, "weight") <- weight
+            return(d)
+        }
+        dt <- getPrioritizedCensusTracts(budget=d_budget(), costOfKit = d_costOfKit(), pctOfTract = (d_pctOfTract()/100), weight= (d_risk_weight()/100))
+        })
+    
+    output$allocationMap <- renderPlot ({
+            dt <- getPrioritizedCensusTracts()
             getServedTractsPlot <- function(df, ttl, st){
                 allocationMap <- ggplot(df) +
                     geom_sf(data = st_union(df))+
@@ -131,14 +139,26 @@ server <- function(input, output, session) {
                     theme(plot.title = element_text(size=22)) +
                     theme(plot.subtitle = element_text(size=14)) +
                     theme(legend.position = "none")
-                
+
                 allocationMap
             }
-            dt <- getPrioritizedCensusTracts(budget=d_budget(), costOfKit = d_costOfKit(), pctOfTract = (d_pctOfTract()/100), weight= d_risk_weight())
-            print(head(dt))
-            t <- paste("Sending",addComma(sum(dt$totalKitsToSend)),"kits to",addComma(sum(dt$isReceivingKits)),"LA county census tracts")
+            t <- paste("Sending",addComma(sum(dt$totalKitsToSend)),"kits to",addComma(sum(dt$isReceivingKits)),"L.A. County census tracts")
             st <- paste("Budget: $",addComma(d_budget()),", Kit cost: $",d_costOfKit(),sep="")
             getServedTractsPlot(dt,t,st)
+    })
+    
+    output$table <- DT::renderDataTable({
+        table <- getPrioritizedCensusTracts() %>%
+            filter(isReceivingKits==1) %>%  
+            select(FIPS, LOCATIO, priorityRanking, HsngUnt, totalKitsToSend, totalCost) %>%
+            rename(Census_Tract_ID = "FIPS",
+                   Census_Tract = "LOCATIO",
+                   Total_Housing_Units = "HsngUnt",
+                   Priority_Score = "priorityRanking",
+                   Total_Kits_To_Send = "totalKitsToSend",
+                   Total_Cost = "totalCost") %>%
+            st_drop_geometry()
+        DT::datatable(table, options = list(pageLength = 10))
     })
 }
 
