@@ -71,6 +71,22 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
+
+    ##  This debounce code keeps the data from being refreshed too quickly while the slider is being used    
+    d_budget <- reactive({
+        input$budget
+    }) %>% debounce(1000)
+    d_costOfKit <- reactive({
+        input$costOfKit
+    }) %>% debounce(1000)
+    d_pctOfTract <- reactive({
+        input$pctOfTract
+    }) %>% debounce(1000)
+    d_risk_weight <- reactive({
+        input$risk_weight
+    }) %>% debounce(1000)
+    print(d_risk_weight)
+    
     output$allocationMap <- renderPlot ({
             getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTract = 1.0, weight = 0.5){
                  d <- shinyData %>%
@@ -118,13 +134,13 @@ server <- function(input, output, session) {
                 
                 allocationMap
             }
-            dt <- getPrioritizedCensusTracts(budget=input$budget, costOfKit = input$costOfKit, pctOfTract = (input$pctOfTract/100), weight= input$risk_weight)
+            dt <- getPrioritizedCensusTracts(budget=d_budget(), costOfKit = d_costOfKit(), pctOfTract = (d_pctOfTract()/100), weight= d_risk_weight())
             print(head(dt))
             t <- paste("Sending",addComma(sum(dt$totalKitsToSend)),"kits to",addComma(sum(dt$isReceivingKits)),"LA county census tracts")
-            st <- paste("Budget: $",addComma(input$budget),", Kit cost: $",input$costOfKit,sep="")
+            st <- paste("Budget: $",addComma(d_budget()),", Kit cost: $",d_costOfKit(),sep="")
             getServedTractsPlot(dt,t,st)
     })
-    }
+}
 
 # Run the application 
 shinyApp(ui = ui, server = server)
