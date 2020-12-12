@@ -17,13 +17,12 @@ library(rmarkdown)
 addComma <- function(num){ format(num, big.mark=",")}
 
 getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTract = 1.0, weight = 0.5){
-    
     d <- finalDataSet %>%
         mutate(isReceivingKits = 0) %>%
         mutate(totalKitsToSend = 0) %>%
         mutate(priorityRanking = FireProbNormalized*weight + RPL_THEMES*(1-weight)) %>%
         arrange(desc(priorityRanking))
-
+    
     numOfKits <- (budget / costOfKit)
     
     budgetRemaining <- budget
