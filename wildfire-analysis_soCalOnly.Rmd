@@ -1,14 +1,20 @@
 ---
 title: "Final"
 author: "Jenna Epstein, Jeff Stern"
-date: "11/17/2020"
-output: html_document
+date: "12/14/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 999)
 ```
 
+# Setup
 ```{r load libraries and functions, message=FALSE, warning=FALSE}
 #libraries
 library(tidyverse)
@@ -29,7 +35,6 @@ library(knitr)
 library(kableExtra)
 library(tidycensus)
 library(mapview)
-library(FedData)    # for downloading federal data
 library(leaflet)    
 library(rgeos)
 library(nngeo)
@@ -168,9 +173,16 @@ paletteInferno8 <- c("#fcff93", "#f7b61f", "#f06813", "#c83233", "#8c1750", "#51
 
 # Data Wrangling and Feature Engineering
 
-## Vegetation and Elevation Data
+## Initial Data Wrangling of Raster Data in ArcMap
+Due to the size of raster files covering the entire state of California, ArcMap is used to do some initial data wrangling. A fishnet was created with 5000x5000m grid cells to use as the input zones for calculations performed for these variables (their relevance to wildfire risk will be discussed in more detail later in this section:
+
+* **Vegetation** (`VEG_MAJORITY`): a raster representation of statewide vegetation. Zonal statistics as table was used to calculate the majority vegetation life-form type per grid cell of the fishnet.
+* **Impervious Surfaces** (`IMPERV_SURFACE_PCT_MEAN`): a raster file from the National Land Cover Database containing pixel data on surfaces classified as impervious. Zonal statistics as table was used to calculate the mean percent impervious surface per grid cell of the fishnet.
+* **Elevation** (`ELEVATION_MEAN`): a raster image of Digital Elevation Model of 15 arc-seconds resolution from the U.S. Geological Survey. Zonal statistics as table was used to calculate the mean elevation per grid cell of the fishnet.
+
+After these calculations were completed, they were joined back to each unique fishnet grid cell and a shapefile was exported to use in R.
+
 ```{r arcmap raster data and initial fishnet}
-#importing the fishnet from arcmap that has majority veg classification and mean elevation already. Zonal statistics as table was used to compute both.
 
 #JENNA
 fishnet_rasterfeatures <- st_read("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/fishnet_veg_elev_imperv_nofires/fishnet_raster_features.shp")
@@ -202,7 +214,9 @@ fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==5] <- "
 fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==6] <- "urban"
 fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==7] <- "water"
 ```
-##counties
+
+## Bringing in California County Data
+
 ```{r}
 #all cali boundaries (counties)
 counties <-  st_read("https://opendata.arcgis.com/datasets/8713ced9b78a4abb97dc130a691a8695_0.geojson") %>% st_transform(st_crs(fishnet_rasterfeatures))
@@ -218,8 +232,8 @@ socal_counties_coastal <- socal_counties %>% filter(COUNTY_NAME == "Los Angeles"
 # centroids of southern california counties
 centroids.socal_counties <- cbind(socal_counties_coastal, st_coordinates(st_centroid(socal_counties_coastal)))
 ```
-```{r}
-#spatial join fishnet with raster features to the counties to prep for more feature engineering
+```{r fishnet with counties, message=FALSE, warning=FALSE}
+#join fishnet with counties
 fishnet_features <-
   st_centroid(fishnet_rasterfeatures) %>%
     st_join(dplyr::select(socal_counties_coastal, COUNTY_NAME)) %>%
@@ -229,8 +243,9 @@ fishnet_features <-
   na.omit()
 ```
 
+### Feature Map: Vegetation Majority per Fishnet Cell
+Text here about vegetation risk to wildfire.
 
-### Map: Vegetation Majority per Fishnet Cell
 ```{r vegetation map}
 # map the majority vegetation classification by fishnet cell
 ggplot() +
@@ -241,7 +256,10 @@ ggplot() +
        caption="Data source: frap.fire.ca.gov - FVEG geodatabase (2015)") + mapTheme()
 
 ```
-### Map: Mean Percent Impervious Surface
+
+### Feature Map: Mean Percent Impervious Surface
+Text here about vegetation risk to wildfire.
+
 ```{r impervious surface map}
 # map the mean elevation by fishnet cell
 # source: https://geodata.lib.berkeley.edu/catalog/stanford-wj406qc5431; publisher - USGS
@@ -254,7 +272,7 @@ ggplot() +
        caption="Data source: National Land Cover Database (2016)") + mapTheme()
 ```
 
-### Map: Mean Elevation per Fishnet Cell
+### Feature Map: Mean Elevation
 ```{r elevation map2}
 # map the mean elevation by fishnet cell
 # source: https://geodata.lib.berkeley.edu/catalog/stanford-wj406qc5431; publisher - USGS
@@ -269,6 +287,7 @@ ggplot() +
 
 
 ## Historical Fire Data: Perimeters and Presence of Fires
+Text here about the Outcome Variable and process of bringing in the California fire perimeters.
 
 ```{r}
 #all perimeters
@@ -279,7 +298,6 @@ cali_fires_recent <- all_cali_fires %>% filter(YEAR_ > 2014)
 
 ```
 
-
 ```{r eval=FALSE, include=FALSE}
 #map all cali fires since 1950
 ggplot()+
@@ -289,16 +307,17 @@ ggplot()+
  mapTheme()
 ```
 
-
 ```{r eval=FALSE, include=FALSE}
 #map all cali fires, past five years
 ggplot()+
   geom_sf(data=counties, fill="grey", color="grey") +
   geom_sf(data=cali_fires_recent, fill="orange", color="red", alpha=0.8) +
-  labs(title = "Fire Perimeters for all Incidents in California", subtitle = "2010-2019", caption="Data Sources: CALFIRE, California State Geoportal") +
+  labs(title = "Fire Perimeters for all Incidents in California", subtitle = "2014-2019", caption="Data Sources: CALFIRE, California State Geoportal") +
  mapTheme()
 
 ```
+
+Using ArcMap once more, the historical fire perimeter data from the CALFIRE is clipped to the southern portion of California to make for faster loading and processing times. The shapefile is brought into R and filtered to retain fire perimeters from incidents between 2015-2019.
 
 ```{r bring in clipped fire perimeter data}
 #clipped fire perimeter data to southern california counties in arcmap
@@ -312,6 +331,7 @@ fires_clipped <- st_read("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/fir
 #filter to only include previous 10 years
 fires_clipped <- fires_clipped %>% st_transform(st_crs(fishnet_features))
 ```
+After examining the data from all of Southern CAlifornia, it is decided that only five counties along the coast will constitute the study area for this analysis. These counties are labeled on the map below: Santa Barbara, Ventura, Los Angeles, Orange, and Santa Monica. 
 
 ```{r map in clipped fire perimeter data}
 #map, if wanted
@@ -330,8 +350,11 @@ ggplot()+
 # feature engineering
 ```
 
+## Fire Data: Light Feature Engineering 
+Here, some feature engineering is done to to calculate the number of fire intersections per fishnet cell and create a new count variable to explore, `n_fires_int`. Then, a binary numeric variable is created called `prev_fire` to indicating the historical presence of a fire (1) or not (0) at any point over the past five years.
 
-```{r map in clipped fire perimeter data}
+
+```{r fire feature engineering}
 ## 1. intersections of fire perimeters with each fishnet cell. using length function: https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lengths
 fires_fishnet <- fishnet_features %>% mutate(n_fires_int = lengths(st_intersects(fishnet_features, fires_clipped)))
 
@@ -342,7 +365,7 @@ fires_fishnet <-
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 #not sure if these graphs make sense because honestly they are just showing the number of incidents without showing magnitude
 
 ggplot(data=fires_clipped, aes(x=YEAR_, y=GIS_ACRES)) +
@@ -357,90 +380,90 @@ ggplot(data=fires_clipped, aes(x=YEAR_, y=GIS_ACRES)) +
 
 
 ### Map: Fire Incident Intersections per Fishnet Cell
-```{r intersections of fires by fishnet map}
-# mapping sum of fire incident intersections by cell - OUTCOME VARIABLE FOR GEOSPATIAL RISK MODEL
+This map shows the count of fire intersections per fishnet cell. Note that this was ultimately not used in model development, but it is interesting to explore the frequency of fire incidents through count data in this area. 
+
+```{r intersections of fires by fishnet map, message=FALSE, warning=FALSE}
+# mapping sum of fire incident intersections by cell
 ggplot() +
   geom_sf(data = fires_fishnet, aes(fill = n_fires_int)) +
   scale_fill_viridis(option="B")+
   labs(title = "Fire Perimeter Intersections in Southern California",
        fill="Fire Perimeter \nIntersections",
-       subtitle = "Count of Incident Intersections per Fishnet Cell | 2015-2019") +
-  mapTheme()
+       subtitle = "Count of Incident Intersections per Fishnet Cell | 2015-2019")+mapTheme()
 
 ```
 
 ### Map: Historical Fire Occurence (Yes or No) per Fishnet Cell
+This is a map of hte outcome variable, `prev_fire`. It is clear that incidents of fires over the past five years were distributed throughout the area, but especially concentrated around the three middle counties: Ventura, Los Angeles, and Orange.
 
-```{r intersections of fires by fishnet}
+```{r yes or no numeric - fires by fishnet, message=FALSE, warning=FALSE}
 # mapping fire incident - yes or no (1 or 0)
 
+#convert to character first
 fires_fishnet$prev_fire <- as.character(fires_fishnet$prev_fire)
 
 ggplot() +
   geom_sf(data = fires_fishnet, aes(fill = prev_fire)) +
+  geom_sf(data=socal_counties_coastal, aes(fill=NA))+
   scale_fill_manual(values=palette2)+
   labs(title = "Presence of Historical Fire Incidents in Southern California",
        subtitle="Per Fishnet Cell | 2015-2019 \n \n0=no fire occurred; 1=at least one fire occurred",
-       fill="Fire Occurrence")+
-      # caption="Data Sources: CALFIRE; California State Geoportal") +
-  mapTheme()+ theme(legend.position='bottom')
+       fill="Fire Occurrence",
+      caption="Data Sources: CALFIRE; California State Geoportal") +
+  mapTheme()+ theme(legend.position='right')
 
 ```
 
 
-```{r}
-#now, convert prev_fire to integer to prepare for model
+```{r convert prev_fire to int, message=FALSE, warning=FALSE}
+#Convert prev_fire to integer to prepare for model development later
 fires_fishnet$prev_fire <- as.numeric(fires_fishnet$prev_fire)
-
 ```
 
-## feature - tree mortality hazard classification
-```{r}
+## Feature: Tree Mortality Hazard Classification
+[Jenna: Text here.]
+
+```{r tier1 tree mortality feature, message=FALSE, warning=FALSE}
 tier1hazard_treemortality <- st_read("https://opendata.arcgis.com/datasets/a71a85136b0b414ea734fdfbe3d7674a_0.geojson") %>% st_transform(st_crs(fishnet_rasterfeatures))
 
-## 1. intersections of tier 1 areas with each fishnet cell. using length function: https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lengths
+## intersections of tier 1 areas with each fishnet cell, using length function
 fires_fishnet <- fires_fishnet %>% mutate(n_tier1hazard_int = lengths(st_intersects(fires_fishnet, tier1hazard_treemortality)))
 
 ```
 
 
-## Weather Data
-Discuss process of collecting, aggregating, and interpolating for the selected weather variables over the past five years.
+## Features: Incorporating Weather Data
+[Jenna: Discuss process of collecting, aggregating, and interpolating for the selected weather variables over the past five years.]
 
-```{r load in data, eval=FALSE, include=FALSE}
+```{r load in weather data, results="hide"}
 #load in specific weather data selection for the stations
 #JENNA
 weather <- read.csv("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/weather_data_socal_2015to2019.csv") 
 
+weather_annual <- weather %>% st_as_sf(coords = c("lon", "lat"), crs = 4236, agr="constant") %>% st_transform(st_crs("EPSG:3310"))
+
+
 #JEFF - add local file path
 #weather <- read.csv("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/weather_data_socal_2015to2019.csv")
-
-# convert to sf
-weather <- weather %>%  st_as_sf(coords = c("lon", "lat"), crs = 4236, agr="constant")
-
-#st transform to cali albers / NAD83 to be consistent
-weather <- weather %>% st_transform(st_crs("EPSG:3310"))
-
-#map both precip and wind speed
-ggplot() +
-  geom_sf(data=fishnet_features)+ 
-  geom_sf(data=weather)
-
 ```
 
-```{r}
-#station data averages by year
 
-weather_annual <- group_by(weather, year, weather_station_id) %>%
+```{r load in weather data2}
+
+library(dplyr)
+weather_annual <- weather_annual %>% dplyr::group_by(year, weather_station_id) %>%
       dplyr::summarize(mean_ann_tmpf = mean(mean_tmpf, na.rm = TRUE),
                        mean_ann_precipitation = mean(mean_precipitation, na.rm = TRUE),
                        mean_ann_humidity = mean(mean_humidity, na.rm = TRUE),
-                       mean_ann_windspeed = mean(mean_wind_Speed, na.rm = TRUE)) %>% ungroup()
-
+                       mean_ann_windspeed = mean(mean_wind_Speed, na.rm = TRUE))
 ```
+
+[Jenna: Text here - creating new data frame for data averages by year per station to use with interpolation. Text about inverse distance weighted interpolation for four variables: precipitation, wind speed, temperature, humidity.]
+
+```{r interpolation - precipitation, results='hide'}
+library(dplyr)
 ### is an idp of 2.0 appropriate for this scale?
 
-```{r interpolation - precipitation, eval=FALSE, include=FALSE}
 #create new df with only precipitation variable
 weather_precip <- weather_annual %>% dplyr::select(geometry, mean_ann_precipitation)
 
@@ -458,8 +481,8 @@ fishnet_precip <- st_join(fires_fishnet, precip.idw, join=st_equals)
 
 ```
 
-
-```{r interpolation - avg wind speed, eval=FALSE, include=FALSE}
+```{r interpolation - avg wind speed, results='hide'}
+library(dplyr)
 #new df with only wind speed variable
 weather_wind <- weather_annual %>% dplyr::select(geometry, mean_ann_windspeed)
 
@@ -475,8 +498,8 @@ avg_windspeed.idw <- weather_wind.idw %>% dplyr::select(avg_windspeed_idw, geome
 fishnet_with_wind <- st_join(fishnet_precip, avg_windspeed.idw, join=st_equals)
 ```
 
-```{r interpolation - avg temp, eval=FALSE, include=FALSE}
-#new df with only temp variable
+```{r interpolation - avg temp, results='hide'}
+library(dplyr)#new df with only temp variable
 weather_temp <- weather_annual %>% dplyr::select(geometry, mean_ann_tmpf)
 
 #idw for temp surface. DW interpolation that uses a power parameter of 2 (idp=2.0).
@@ -491,7 +514,8 @@ avg_temp.idw <- weather_temp.idw %>% dplyr::select(avg_temp_idw, geometry)
 fishnet_with_temp <- st_join(fishnet_with_wind, avg_temp.idw, join=st_equals)
 ```
 
-```{r interpolation - avg temp, eval=FALSE, include=FALSE}
+```{r interpolation - avg hum, results='hide'}
+library(dplyr)
 #new df with only humidity variable
 weather_hum <- weather_annual %>% dplyr::select(geometry, mean_ann_humidity)
 
@@ -507,9 +531,13 @@ avg_hum.idw <- weather_hum.idw %>% dplyr::select(avg_hum_idw, geometry)
 fishnet_with_hum <- st_join(fishnet_with_temp, avg_hum.idw, join=st_equals)
 ```
 
-```{r all weather features maps}
+### Feature Maps: All Weather Features
+These maps show the four engineered weather across coastal southern California. [Jenna: ADD MORE.]
+
+```{r all weather features maps, results='hide'}
 #maps with weather features
 
+# TO DO - GRID ARRANGE BY 4
 #precip
 ggplot()+
   geom_sf(data=weather_precip.idw, aes(fill=avg_precip_idw)) +
@@ -554,22 +582,18 @@ ggplot()+
 ```
 
 
-```{r}
+```{r rename to fishnet_final, warning=FALSE}
 #rename to final fishnet
 fishnet_final <- fishnet_with_hum
-
-#create column for cvID
-#fishnet_final <- fishnet_final %>% 
-#  dplyr::mutate(cvID = sample(round(nrow(fishnet_final) / 24), 
- #                      size=nrow(fishnet_final), replace = TRUE))
 
 ```
 
 
 ## Feature: Distance to nearest electric substation
+[Jenna: Text here.]
+
 ```{r distance to nearest electric substation}
 #more feature engineering...
-
 #read in electric substations
 electric_substations <- st_read("https://opendata.arcgis.com/datasets/7f37f2535d3144e898a53b9385737ee0_0.geojson") %>% 
   dplyr::select(Y = Latitude, X = Longitute) %>%
@@ -583,7 +607,12 @@ fishnet_final <-
     mutate(dist_elec_substation=st_nn(st_centroid(fishnet_final), electric_substations, 1))
 
 fishnet_final$dist_elec_substation <- as.numeric(fishnet_final$dist_elec_substation)  # Convert variable to numeric
+```
 
+### Feature Map: Distance to nearest electric substation
+[Jenna: Text here.]
+
+```{r map distance to nearest electric substation}
 ggplot()+
   geom_sf(data=fishnet_final, aes(fill=dist_elec_substation)) +
   scale_fill_viridis(option="B") +
@@ -595,8 +624,10 @@ ggplot()+
 
 ```
 
-## Distance to nearest CALFIRE or contract fire facility
-```{r}
+## Feature: Distance to nearest CALFIRE or contract fire facility
+[Jenna: Text here.]
+
+```{r dist to fire facility, message=FALSE, warning=FALSE}
 #read in facilities
 fire_facilities <- st_read("https://opendata.arcgis.com/datasets/1c8a93cac92f418e98a8fa6a2eaf4265_0.geojson") %>% 
   dplyr::select(Y = LAT, X = LON) %>%
@@ -610,7 +641,12 @@ fishnet_final <-
     mutate(dist_fire_facility=st_nn(st_centroid(fishnet_final), fire_facilities, 1))
 
 fishnet_final$dist_fire_facility <- as.numeric(fishnet_final$dist_fire_facility)  # Convert variable to numeric
+```
 
+## Feature Map: Distance to nearest CALFIRE or contract fire facility
+[Jenna: Text here.]
+
+```{r map dist to fire facility, message=FALSE, warning=FALSE}
 ggplot()+
   geom_sf(data=fishnet_final, aes(fill=dist_fire_facility)) +
   scale_fill_viridis(option="B") +
@@ -622,9 +658,9 @@ ggplot()+
 
 ```
 
-# Exploring the Spatial Process
-## Local Moran’s I
-```{r}
+## Feature: Local Moran’s I
+Text about exploring the spatial process and incorporating spatial features. [Jenna: ADD MORE]
+```{r local morans i, message=FALSE, warning=FALSE}
 library(spdep)
 #use {spdep}
 fishnet_final.nb <- poly2nb(as_Spatial(fishnet_final), queen=TRUE)
@@ -644,7 +680,7 @@ fishnet_final.localMorans <-
 
 ```
 
-```{r eval=FALSE, include=FALSE}
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 vars <- unique(fishnet_final.localMorans$Variable)
 varList <- list()
 
@@ -661,7 +697,8 @@ do.call(grid.arrange,c(varList, ncol = 4, top = "Local Morans I statistics, Numb
 
 ```
 
-## Plotting Nearest Neighbor Distance to Hotspots
+## Map: Plotting Nearest Neighbor Distance to Hotspots
+[Jenna: Text here.]
 
 ```{r}
 # create Local Moran's I feature in fishnet_final
@@ -684,135 +721,29 @@ fishnet_final$n_fires_int.isSig.dist <-as.numeric(fishnet_final$n_fires_int.isSi
 
 ggplot() +
       geom_sf(data = fishnet_final, aes(fill=n_fires_int.isSig.dist), colour=NA) +
-      scale_fill_viridis(name="st_nn \ndistance") +
+      scale_fill_viridis(option="B", direction = 1, 
+                         name="st_nn \ndistance") +
       labs(title="Distance to Highly Significant Fire Hotspots") +
       mapTheme()
 ```
 
-
-```{r}
+In prepration for the model development, the a new fire variable created to a yes/no variable.
+```{r fire_yesno, message=FALSE, warning=FALSE}
 #fire not numeric
 fishnet_final <- fishnet_final %>% mutate(fire_yesno = case_when(fishnet_final$prev_fire == 1 ~ "yes",
                                                                  fishnet_final$prev_fire == 0 ~ "no"))
 
 ```
 
-#WORKING ON MODEL - GLM (poisson)
-```{r eval=FALSE, include=FALSE}
-#poisson. no need for train and test data since this is focusing on geospatial processes at play. 
+# Model Development
+[Jenna: Text here.]
 
-#why is n_fires_int.isSig.dist giving NA?
-
-reg1.poisson <- glm(n_fires_int ~ .,
-                  data=st_drop_geometry(fishnet_final) %>% dplyr::select(-fire_yesno, -uniqueID, -cvID), family="poisson")
-
-reg1.poisson.r2 <- pR2(reg1.poisson)[4]
-
-summary(reg1.poisson)
-print(reg1.poisson.r2)
-
-summ(reg1.poisson)
-
+```{r prev_fire var to numeric, message=FALSE, warning=FALSE}
+# Convert variable to numeric
+fishnet_final$prev_fire <- as.numeric(fishnet_final$prev_fire)  
 ```
 
-```{r eval=FALSE, include=FALSE}
-#geospatial risk model (poisson). since it's considering spatiality, could skip step above and go straight to cross validation
-
-#some "risk" variables to experiment with
-reg.vars = c("dist_elec_substation", "COUNTY_NAME", "VEG_MAJORITY", "dist_fire_facility", "IMPERV_SURFACE_PCT_MEAN", "ELEVATION_MEAN", "prev_fire", "avg_precip_idw", "avg_windspeed_idw", "avg_temp_idw", "avg_hum_idw")
-
-
-reg.cv <- crossValidate(
-  dataset = fishnet_final,
-  id = "cvID",
-  dependentVariable = "n_fires_int",
-  indVariables = reg.vars) %>%
-    dplyr::select(cvID = cvID, n_fires_int, Prediction, geometry)
-```
-
-
-```{r}
-#error message?
-#This hold out fold is 21 
-#Note: Using an external vector in selections is ambiguous.
-#i Use `all_of(dependentVariable)` instead of `dependentVariable` to silence this message.
-#i See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
-```
-
-
-```{r eval=FALSE, include=FALSE}
-reg.vars.spatial = c("dist_elec_substation", "COUNTY_NAME", "VEG_MAJORITY", "dist_fire_facility", "IMPERV_SURFACE_PCT_MEAN", "ELEVATION_MEAN", "prev_fire", "avg_precip_idw", "avg_windspeed_idw", "avg_temp_idw", "avg_hum_idw", "n_fires_int.isSig", "n_fires_int.isSig.dist")
-
-```
-
-
-```{r eval=FALSE, include=FALSE}
-#eventually want to do spatial cv with census tracts; need to extrapolate from grid cells to census tracts earlier
-reg.cv.spatial <- crossValidate(
-  dataset = fishnet_final,
-  id = "cvID",
-  dependentVariable = "n_fires_int",
-  indVariables = reg.vars.spatial) %>%
-    dplyr::select(cvID = cvID, n_fires_int, Prediction, geometry)
-
-```
-
-
-```{r}
-reg.summary <- 
-  rbind(
-    mutate(reg.cv, Error = Prediction - n_fires_int,
-                   Regression = "Random k-fold CV"),
-    
-    mutate(reg.cv.spatial, Error = Prediction - n_fires_int,
-                          Regression = "Random k-fold CV - with Spatial Features")) 
-
-error_by_reg_and_fold <- reg.summary %>%
-    group_by(cvID, Regression) %>% 
-    dplyr::summarise(Mean_Error = mean(Prediction - n_fires_int, na.rm = T),
-              MAE = mean(abs(Mean_Error), na.rm = T),
-                            SD_MAE = mean(abs(Mean_Error), na.rm = T)) %>% ungroup()
-
-
-## plot histogram of OOF (out of fold) errors
-error_by_reg_and_fold %>%
-  ggplot(aes(MAE)) + 
-    geom_histogram(bins = 30, colour="black", fill = "orange") +
-    facet_wrap(~Regression) +  
-    geom_vline(xintercept = 0) + 
-    labs(title="Distribution of Mean Absolute Error", subtitle = "100 k-fold Cross Validation vs. Spatial 'Leave-One-Group-Out' (County) Cross Validation",
-         x="Mean Absolute Error", y="Count")
-
-
-```
-```{r}
-st_drop_geometry(error_by_reg_and_fold) %>%
-  group_by(Regression) %>% 
-    dplyr::summarize(Mean_MAE = round(mean(MAE), 2),
-              SD_MAE = round(sd(MAE), 2)) %>%
-  kable(caption = "Mean Absolute Error, By Regression") %>%
-    kable_styling("striped", full_width = F) 
-```
-```{r}
-#mapping predictions - would this be for the next five years?
-
-  reg.summary %>%
-  ggplot()+
-    geom_sf(aes(fill = Prediction)) +
-    facet_wrap(~Regression) +
-    scale_fill_viridis(option="B") +
-    labs(title = "Predicted Count of Wildfire Incidents, by Regression") +
-    mapTheme() + theme(legend.position="bottom") + theme(strip.text.x = element_text(size=9))
-```
-
-# MODEL OPTION 2: WORKING GLM (binomial)
-```{r}
-
-fishnet_final$prev_fire <- as.numeric(fishnet_final$prev_fire)  # Convert variable to numeric
-```
-
-
-```{r glm - binomial}
+```{r reg, message=FALSE, warning=FALSE}
 
 set.seed(3456)
 trainIndex <- createDataPartition(fishnet_final$prev_fire, p = .70,
@@ -822,19 +753,24 @@ dataTrain <- fishnet_final[ trainIndex,]
 dataTest  <- fishnet_final[-trainIndex,]
 
 reg.binomial<- glm(prev_fire ~ .,
-                  data=st_drop_geometry(fishnet_final) %>% dplyr::select(-fire_yesno, -avg_hum_idw, -uniqueID, -n_fires_int, n_fires_int.isSig.dist, n_fires_int.isSig), family="binomial")
+                  data=st_drop_geometry(fishnet_final) %>% dplyr::select(-fire_yesno, -uniqueID, -n_fires_int,), family="binomial")
 
-reg.binomial.r2 <- pR2(reg.binomial)[4]
-
-summary(reg.binomial)
-print(reg.binomial.r2)
+#reg.binomial.r2 <- pR2(reg.binomial)[4]
+#summary(reg.binomial)
+#print(reg.binomial.r2)
 
 ```
+## Model Results
+[Jenna: Text here.]
+```{r}
+summ(reg.binomial)
+```
 
-```{r reg1 stargazer table}
+```{r reg stargazer table, eval=FALSE, include=FALSE}
 # stargazer table for results of reg.binomial
+
 library(stargazer)
-stargazer(reg1,type="html", title="Results of reg.binomial",
+stargazer(reg.binomial,type="html", title="Results of reg.binomial",
           single.row = TRUE, # to put coefficients and standard errors on same line
           font.size="normalsize",
           notes.append=FALSE,
@@ -844,7 +780,7 @@ stargazer(reg1,type="html", title="Results of reg.binomial",
 
 ```
 
-```{r reg1 testprobs}
+```{r reg testprobs, message=FALSE, warning=FALSE}
 testProbs <- data.frame(Outcome = as.factor(dataTest$prev_fire),
                         Probs = predict(reg.binomial, dataTest, type= "response"))
 
@@ -853,60 +789,43 @@ testProbs <-
   mutate(predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)))
 ```
 
+### Confusion Matrix
+[Jenna: Text here.]
 
-```{r reg1 testprobs}
-
+```{r reg testprobs confmatrix, message=FALSE, warning=FALSE}
 xtab.reg1 <-caret::confusionMatrix(testProbs$predOutcome, testProbs$Outcome, 
                        positive = "1")
 
 as.matrix(xtab.reg1) %>% kable(caption = "Confusion Matrix for reg1 Model") %>% kable_styling("striped", full_width = T, font_size = 14, position = "left")
+```
 
+### Confusion Matrix Statistics
+[Jenna: Text here- confusion matrix statistics]
+
+```{r reg testprobs confmatrix statistics, message=FALSE, warning=FALSE}
 as.matrix(xtab.reg1, what="classes") %>% kable(caption = "Confusion Matrix for reg1 Model - Statistics") %>% kable_styling(font_size = 14, full_width = T,
                 bootstrap_options = c("striped", "hover"))
 ```
 
-```{r}
+### Goodness of Fit
+[Jenna: Text here - ROC Curve and Area Under Curve.]
+
+```{r testProbs ROC, message=FALSE, warning=FALSE}
 ggplot(testProbs, aes(d = as.numeric(Outcome), m = Probs)) +
   geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
   style_roc(theme = theme_grey) +
   geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
-  labs(title = "Receiver Operating Characteristic (ROC) Curve - reg2 Model")
-```
-```{r}
-pROC::auc(testProbs$Outcome, testProbs$Probs) %>% kable(caption = "Area Under the Curve (AUC)") %>% kable_styling(position ="left", full_width = T, font_size = 18) 
-
+  labs(title = "Receiver Operating Characteristic (ROC) Curve")
 ```
 
-# best threshold?
-
-
-
-
-
-#cross validation
-```{r}
-ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
-
-#str(fishnet_final$fire_yesno)
-#fishnet_final$fire_yesno <- as.factor(fishnet_final$fire_yesno) 
-#fishnet_final$fire_yesno <- fct_rev(fishnet_final$fire_yesno)
-
-#factor(fishnet_final$fire_yesno, levels=rev(levels(fishnet_final$fire_yesno)))
-
-
-cvFit.reg1 <- train(fire_yesno ~ .,
-                  data=st_drop_geometry(fishnet_final) %>% dplyr::select(-prev_fire, -avg_hum_idw, -uniqueID, -n_fires_int, n_fires_int.isSig.dist, n_fires_int.isSig), 
-                method="glm", family="binomial",
-                metric="ROC", trControl = ctrl)
+```{r AUC, message=FALSE, warning=FALSE}
+pROC::auc(testProbs$Outcome, testProbs$Probs) %>% kable(caption = "Area Under the Curve (AUC)") %>% kable_styling(position ="left", full_width = T, font_size = 18)
 ```
+### Distribution of Predicted Probabilities
+[Jenna: Text here.]
 
-```{r}
-print(cvFit.reg1) %>% kable(caption="Cross-Validated reg1 Results") %>% kable_styling(font_size = 14, full_width = T,bootstrap_options = c("striped", "hover"))
+```{r reg testprobs ggplot, eval=FALSE, include=FALSE}
 
-```
-
-
-```{r reg1 testprobs, eval=FALSE, include=FALSE}
 ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
   geom_density() +
   facet_grid(Outcome ~ .) +
@@ -916,28 +835,52 @@ ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) +
   plotTheme() + theme(strip.text.x = element_text(size = 18),
         legend.position = "none")
 
-ggplot(testProbs, aes(d = as.numeric(Outcome), m = Probs)) +
-  geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
-  style_roc(theme = theme_grey) +
-  geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
-  labs(title = "Receiver Operating Characteristic (ROC) Curve - Fire Probability Model", subtitle="Area Under the Curve = 0.xx")+ plotTheme()
-
-
-pROC::auc(testProbs$Outcome, testProbs$Probs) %>% kable(caption = "Area Under the Curve (AUC)") %>% kable_styling(position ="left", full_width = T, font_size = 18) 
-
-```
-```{r}
-testProbs <- 
-    data.frame(uniqueID = dataTest$uniqueID,
-               Outcome = dataTest$prev_fire,
-               probs = predict(reg.binomial, dataTest, type="response"),
-               predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)                  ))
 ```
 
+## Cross Validation (CV)
+[Jenna: Text here about accuracy and generalizability. Also about releveling the factors.]
 
+```{r cv, message=FALSE, warning=FALSE}
+ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
 
-```{r}
+str(fishnet_final$fire_yesno)
+fishnet_final$fire_yesno <- as.factor(fishnet_final$fire_yesno) 
+fishnet_final$fire_yesno <- fct_rev(fishnet_final$fire_yesno)
 
+cvFit.reg1 <- train(fire_yesno ~ .,
+                  data=st_drop_geometry(fishnet_final) %>% dplyr::select(-prev_fire, -uniqueID, -n_fires_int), 
+                method="glm", family="binomial",
+                metric="ROC", trControl = ctrl)
+```
+
+### CV Results: Goodness of Fit
+[Jenna: Text here.]
+
+```{r cv results}
+print(cvFit.reg1) %>% kable(caption="Cross-Validated Results") %>% kable_styling(font_size = 14, full_width = T,bootstrap_options = c("striped", "hover"))
+
+```
+
+### Visualizing the CV Goodness of Fit Metrics
+[Jenna: Text here.]
+
+```{r cv goodness of fit metrics plots, message=FALSE, warning=FALSE}
+dplyr::select(cvFit.reg1$resample, -Resample) %>%
+  gather(metric, value) %>%
+  left_join(gather(cvFit.reg1$results[2:4], metric, mean)) %>%
+  ggplot(aes(value)) +
+    geom_histogram(bins=35, fill = "#f7b61f") +
+    facet_wrap(~metric) +
+    geom_vline(aes(xintercept = mean), colour = "red", linetype = 3, size = 1.5) +
+    scale_x_continuous(limits = c(0, 1)) +
+    labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
+         subtitle = "Across-fold mean reprented as dotted lines")
+```
+
+## Finding the Optimal Threshold
+[Jenna: Text here.]
+
+```{r iterate threshold function, message=FALSE, warning=FALSE}
 iterateThresholds <- function(data) {
   x = .01
   all_prediction <- data.frame()
@@ -945,7 +888,7 @@ iterateThresholds <- function(data) {
   
   this_prediction <-
       testProbs %>%
-      mutate(predOutcome = ifelse(probs > x, 1, 0)) %>%
+      mutate(predOutcome = ifelse(Probs > x, 1, 0)) %>%
       dplyr::count(predOutcome, Outcome) %>%
       dplyr::summarize(sum_TN = sum(n[predOutcome==0 & Outcome==0]),
                 sum_TP = sum(n[predOutcome==1 & Outcome==1]),
@@ -966,28 +909,42 @@ return(all_prediction)
 
 ```
 
-```{r}
-
+```{r threshold table}
 whichThreshold <- iterateThresholds(testProbs)
 
-table_threshold<-kable(whichThreshold) %>%
+threshold_table<-kable(whichThreshold) %>%
   kable_styling(bootstrap_options = "striped", full_width = F)%>%
   scroll_box(width = "100%", height = "500px")
 
-table_threshold
+threshold_table
 ```
 
-# IDEAL THRESHOLD: 0.55 (based on accuracy alone)
-```{r}
-ggplot(testProbs, aes(d = as.numeric(Outcome), m = probs)) +
+## Results of the Model at the Ideal Threshold (0.55 - based on accuracy alone)
+[Jenna: Text here.]
+
+```{r density of probs}
+ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
+  geom_density() +
+  facet_grid(Outcome ~ .) +
+  scale_fill_manual(values = palette2) + xlim(0, 1) +
+  labs(x = "Fire Occurred or Not (outcome variable)", y = "Density of Probabilities",
+       title = "Distribution of Predicted Probabilities by Observed Outcome", subtitle = "Test Probabilities") +
+  plotTheme() + theme(strip.text.x = element_text(size = 18),
+        legend.position = "none")
+```
+[Jenna: Text here.]
+
+```{r AUC ideal thresh}
+ggplot(testProbs, aes(d = as.numeric(Outcome), m = Probs)) +
   geom_roc(n.cuts = 55, labels = FALSE, colour = "#FE9900") +
   style_roc(theme = theme_grey) +
   geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
-  labs(title = "Receiver Operating Characteristic (ROC) Curve")
+  labs(title = "Receiver Operating Characteristic (ROC) Curve - Fire Probability Model", subtitle="Area Under the Curve = 0.xx")+ plotTheme()
 ```
 
+[Jenna: Text here.]
 
-```{r}
+```{r predict fishnet, message=FALSE, warning=FALSE}
 predict_fishnet <- 
   data.frame(uniqueID = fishnet_final$uniqueID,
   Outcome = fishnet_final$prev_fire,
@@ -995,16 +952,35 @@ predict_fishnet <-
 
 predict_fishnet <- 
   predict_fishnet %>%
-  mutate(predOutcome  = as.factor(ifelse(predict_fishnet$Probs > 0.43, 1, 0)))
+  mutate(predOutcome  = as.factor(ifelse(predict_fishnet$Probs > 0.56, 1, 0)))
 
 
 fishnet_final_preds <- cbind(fishnet_final,predict_fishnet)
 ```
 
-## EVACUATION KIT DISTRIBUTION
+```{r message=FALSE, warning=FALSE}
+
+#goodness of fit metrics, etc for the model on the final fishnet predictions..do we need these?
+ggplot(predict_fishnet, aes(x = Probs, fill = as.factor(Outcome))) + 
+  geom_density() +
+  facet_grid(Outcome ~ .) +
+  scale_fill_manual(values = palette2) + xlim(0, 1) +
+  labs(x = "Fire Occurred or Not (outcome variable)", y = "Density of Probabilities",
+       title = "Distribution of Predicted Probabilities by Observed Outcome") +
+  plotTheme() + theme(strip.text.x = element_text(size = 18),
+        legend.position = "none")
+
+ggplot(predict_fishnet, aes(d = as.numeric(Outcome), m = Probs)) +
+  geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
+  style_roc(theme = theme_grey) +
+  geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
+  labs(title = "Receiver Operating Characteristic (ROC) Curve - Fire Probability Model", subtitle="Area Under the Curve = 0.xx")+ plotTheme()
+```
+
+# Use Case: Evacuation Kit Distribution
 once we have fire probability per fishnet, use areal interpolation (make estimates from a source set of polygons - the fishnet grid cells - to an overlapping, incongruent set of target polygons - census tracts)
 the fire probability will be one part of the fire risk score.
-```{r}
+```{r census data}
 library(tidycensus)
 library(dplyr)
 projection <- "EPSG:3310"
@@ -1061,48 +1037,215 @@ map.CensusTracts
 ```
 
 
-
-
-```{r eval=FALSE, include=FALSE}
-# go from fishnet cells to census tracts
-# instead of areal, st_interpolate_aw to go from grid cells --> census tract
-
-#interpolate from tracts to fishnet. Look up the `extensive` parameter.
-```
-
+##Explanation of the process of going from fishnet cells to census tracts
+[Jenna: Text - Used st_interpolate_aw to go from grid cells --> census tract. Discuss why.]
 ```{r}
-fishnet_final_preds_only <- fishnet_final_preds %>% dplyr::select(uniqueID, Probs, geometry)
+#Code - ran separately, but this shows the process
+
+#fishnet_final_preds_only <- fishnet_final_preds %>% dplyr::select(uniqueID, Probs, geometry)
+
+#interpolate_probs <-
+#  dplyr::select(fishnet_final_preds, Probs) %>%
+#  st_interpolate_aw(., tracts17, extensive = FALSE) %>% st_sf()
+
+#interpolation_tracts <- st_join(interpolate_probs, tracts17, join=st_equals)
+#fireProb_tracts <- interpolation_tracts %>% dplyr::select(GEOID, geometry, Probs) %>% st_sf()
+
+#fireProb_tracts_nogeom <- interpolation_tracts %>% dplyr::select(GEOID, Probs) %>% st_drop_geometry()
+
+#write.csv
 ```
 
-```{r eval=FALSE, include=FALSE}
-interpolate_probs <-
-  dplyr::select(fishnet_final_preds, Probs) %>%
-  st_interpolate_aw(., tracts17, extensive = T) %>% st_sf()
+# Assessing population vulnerability
 
-interpolation_tracts <- st_join(interpolate_probs, tracts17, join=st_equals)
-fireProb_tracts <- interpolation_tracts %>% dplyr::select(GEOID, geometry, Probs)
-fireProb_tracts_nogeom <- interpolation_tracts %>% dplyr::select(GEOID, Probs) %>% st_drop_geometry()
+```{r setup2}
+library(sf)
+library(ggplot2)
+library(tidycensus)
+library(dplyr)
+palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
+projection <- "EPSG:6423"
+options(scipen = 999)
 ```
 
+Our final algorithm for allocating emergency supply kits will not only take into account the probability of a fire occurring. We will also prioritize census tracts to receive aid if their populations are more "vulnerable" to an emergency like a wildfire. These populations may be less likely to be able to evacuate or less likely to be able to purchase/own an emergency supply kit on their own.
 
-```{r eval=FALSE, include=FALSE}
-d<- ggplot() + geom_sf(data=interpolate_probs, aes(fill = Probs), colour="white") +
-  scale_fill_viridis(option="B")+theme(legend.position = "none")+ labs(title="Fire Probability by Census Tract", subtitle="Los Angeles County")+mapTheme()
+We initially explored creating our own composite score, but decided to use the reputable CDC Social Vulnerability Index (https://www.atsdr.cdc.gov/placeandhealth/svi/index.html). The SVI uses variables from the American Community Survey. Among its many uses, CDC recommends using the score to "allocate emergency preparedness funding by community need."
 
-d
+```{r getVulnIndexScore}
+vulnIndex <- st_read("California-SVI/SVI2018_CALIFORNIA_tract.shp")%>%
+  filter(COUNTY == 'Los Angeles') %>%
+  filter(FIPS != '06037599100') %>%
+  filter(FIPS != '06037599000') %>%
+  dplyr::select(starts_with("RPL_"),"COUNTY","FIPS","LOCATION","E_TOTPOP") %>%
+  mutate_if(is.numeric, list(~na_if(., -999)))%>%
+  st_transform(projection) 
+
 ```
 
+The Social Vulnerability Index is made up of 4 sub-themes: 
 
-```{r eval=FALSE, include=FALSE}
-fishnet_final_clipped <-  st_intersection(tracts17, fishnet_final)
-margin = theme(plot.margin = unit(c(-0.5,0,0,0), "cm"))
-
-grid.arrange(c, d, ncol=2 + margin)
-
-c<- ggplot() + geom_sf(data=fishnet_final_clipped, aes(fill = MEAN_THRT), color=NA)+ geom_sf(data=tracts17, color="GREY", fill="transparent") + scale_fill_viridis(option="B")+theme(legend.position = "none")+ labs(title="Fire Probability by Fishnet Cell", subtitle="Los Angeles County")+mapTheme()
- 
-b
+```{r fig.cap="Image from CDC"}
+knitr::include_graphics("C:/Users/jenna/Documents/GitHub/MUSA508-final/SVI_image.jpg")
 ```
 
+We fetched the data for each of these themes for each census tract in Los Angeles County. These plots show the tracts' percentile rankings for of the sub-themes as well as the primary composite score.
 
-## Then, pull in ACS data for southern california by tract.
+```{r exploratoryPlots}
+svi_theme1 <- ggplot(vulnIndex) +
+  geom_sf(data = st_union(vulnIndex))+
+  geom_sf(aes(fill = q5(RPL_THEME1)),lwd = 0) +
+  scale_fill_manual(values = palette5,
+                    labels = qBr(vulnIndex %>% drop_na(RPL_THEME1), "RPL_THEME1", rnd=FALSE),
+                    name = "Percentile") +
+  labs(title = "Socioeconomic status", subtitle = "By census tract, 2018 CDC Social Vulnerability Index") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=16))
+
+svi_theme2 <- ggplot(vulnIndex) +
+  geom_sf(data = st_union(vulnIndex))+
+  geom_sf(aes(fill = q5(RPL_THEME2)),lwd = 0) +
+  scale_fill_manual(values = palette5,
+                    labels = qBr(vulnIndex %>% drop_na(RPL_THEME2), "RPL_THEME2", rnd=FALSE),
+                    name = "Percentile") +
+  labs(title = "Household composition & disability", subtitle = "By census tract, 2018 CDC Social Vulnerability Index") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=16))
+
+svi_theme3 <- ggplot(vulnIndex) +
+  geom_sf(data = st_union(vulnIndex))+
+  geom_sf(aes(fill = q5(RPL_THEME3)),lwd = 0) +
+  scale_fill_manual(values = palette5,
+                    labels = qBr(vulnIndex %>% drop_na(RPL_THEME3), "RPL_THEME3", rnd=FALSE),
+                    name = "Percentile") +
+  labs(title = "Minority status & language", subtitle = "By census tract, 2018 CDC Social Vulnerability Index") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=16))
+
+svi_theme4 <- ggplot(vulnIndex) +
+  geom_sf(data = st_union(vulnIndex))+
+  geom_sf(aes(fill = q5(RPL_THEME4)),lwd = 0) +
+  scale_fill_manual(values = palette5,
+                    labels = qBr(vulnIndex %>% drop_na(RPL_THEME4), "RPL_THEME4", rnd=FALSE),
+                    name = "Percentile") +
+  labs(title = "Housing type & transportation", subtitle = "By census tract, 2018 CDC Social Vulnerability Index") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=16))
+
+grid.arrange(svi_theme1, svi_theme2, svi_theme3, svi_theme4, nrow=2,ncol=2)
+
+svi_total <- ggplot(vulnIndex) +
+  geom_sf(data = st_union(vulnIndex))+
+  geom_sf(aes(fill = q5(RPL_THEMES)),lwd = 0) +
+  scale_fill_manual(values = palette5,
+                    labels = qBr(vulnIndex %>% drop_na(RPL_THEMES), "RPL_THEMES", rnd=FALSE),
+                    name = "Percentile") +
+  labs(title = "Social Vulnerability Index Composite", subtitle = "By census tract, 208 CDC Social Vulnerability Index") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=16))
+
+svi_total
+```
+
+Although the SVI dataset includes population information for each tract, we want to be able to allocate one kit per household. We get household data from the American Community Survey and join it with our social vulnerability index information.
+
+```{r getHousingUnitData}
+projection <- "EPSG:6423"
+census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", install=TRUE, overwrite=TRUE)
+
+housingUnitsByTract <- get_acs(geography = "tract", variables = c("B07013_002E"), 
+            year=2018, state='CA', county=c('Los Angeles'), geometry=T, output="wide") %>%
+        st_transform(projection) %>%
+        dplyr::rename(HousingUnits = "B07013_002E") %>%
+        dplyr::select(-starts_with("B"), -NAME)  %>%
+  filter(GEOID != '06037599100') %>%
+  filter(GEOID != '06037599000') %>%
+  dplyr::rename(FIPS='GEOID') %>%
+  st_drop_geometry()
+
+vulnIndex <- vulnIndex %>% dplyr::left_join(housingUnitsByTract, left=TRUE)
+```
+
+We combine the Social Vulnerability Index with our fire risk scores for each tract.
+```{r combineScores}
+# For each census tract, need to get a fire risk score, an at-need population score, and a normalized score that weights each equally at 50%. In the app, user could change this weighting from 50% to something different.
+
+finalDataSet <- vulnIndex
+
+## JOIN TO RISK SCORE
+
+```
+
+Finally, we create a function that can be used to output a prioritized list of census tracts. The inputs for the function are:
+1. Total allocated budget (default: $250,000)
+2. Cost of the kit (default: $20)
+3. Percentage of households in each tract to distribute a kit (default: 100%)
+4. Amount of weight to give to fire risk score, vs. vulnerability index (default: 50%)
+
+The function returns a data set of all the tracts with a column added to indicate whether or not they should receive kits.
+
+```{r finalOutput}
+
+addComma <- function(num){ format(num, big.mark=",")}
+
+getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTract = 1.0, weight = 0.5){
+
+  d <- finalDataSet %>%
+    mutate(isReceivingKits = 0) %>%
+    mutate(totalKitsToSend = 0) %>%
+    mutate(priorityRanking = RPL_THEMES*weight + RPL_THEMES*(1-weight)) %>%
+    arrange(desc(priorityRanking))
+    ## TODO: UPDATE THIS VALUE
+  
+   numOfKits <- (budget / costOfKit)
+  
+  budgetRemaining <- budget
+  tract.i <- 1
+  totalHousingUnits <- 0
+  
+  while(budgetRemaining > costOfKit) {
+      housingUnits <- floor(d[tract.i,]$HousingUnits * pctOfTract)
+      if (housingUnits == 0) { tract.i <- tract.i+1; next; }
+      costForTract <- housingUnits*costOfKit
+   #   print(paste("Tract #",d[tract.i,]$FIPS, " is priority #", tract.i, " and has ", addComma(housingUnits), " housing units, Cost of kits: $",addComma(costForTract), sep=""))
+      if(costForTract <= budgetRemaining-costForTract) {
+  #      print(paste("Budget remaining: $", addComma(budgetRemaining),sep=""))
+        totalHousingUnits <- totalHousingUnits + housingUnits
+        kitsSent <- housingUnits
+      } else {
+        possibleHousingUnits <- floor(budgetRemaining/costOfKit)
+        totalHousingUnits <- totalHousingUnits + possibleHousingUnits
+ #       print(paste("Cost for whole tract exceeds remaining budget, partial distribution to",addComma(floor(possibleHousingUnits))," housing units possible"))
+        kitsSent <- possibleHousingUnits
+      }
+      budgetRemaining <- budgetRemaining - costForTract
+      d[tract.i,]$isReceivingKits <- 1
+      d[tract.i,]$totalKitsToSend <- kitsSent
+      tract.i <- tract.i + 1  
+  }
+#  print(paste(addComma(totalHousingUnits),"housing units in", tract.i, "LA County tracts can be served by investing $",addComma(budget),"in the emergency kit allocation program (not including overhead costs)"))
+  attr(d, "budget") <- budget
+  attr(d, "costOfKit") <- costOfKit
+  attr(d, "pctOfTract") <- pctOfTract
+  attr(d, "weight") <- weight
+  return(d)
+}
+```
+
+```{r demoFinalAlgorithm}
+
+example1 <- getPrioritizedCensusTracts(budget = 250000, costOfKit = 20)
+
+example2 <- getPrioritizedCensusTracts(budget = 250000, costOfKit = 20, pctOfTract = 0.5)
+
+
+allocationMap <- ggplot(example1) +
+  geom_sf(data = st_union(example1))+
+  geom_sf(aes(fill = isReceivingKits),lwd = 0) +
+  labs(subtitle = "Assumes kits are distributed to 100% of housing units in tracts", title = "Budget: $250,000 - Kit cost: $20") +
+  theme(plot.title = element_text(size=22)) +
+  theme(legend.position = "none")
+
+allocationMap
+
+```
