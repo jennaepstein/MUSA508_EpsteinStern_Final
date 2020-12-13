@@ -14,12 +14,52 @@ library(sf)
 library(kableExtra)
 library(rmarkdown)
 
+options(scipen = 999)
 projection <- "EPSG:6423"
 
 shinyData <- st_read("finalDataSet-forShiny.shp") %>%
     st_transform(projection)
 
 addComma <- function(num){ format(num, big.mark=",")}
+
+mapTheme <- function(base_size = 12) {
+    theme(
+        text = element_text( color = "black"),
+        plot.title = element_text(size = 14,colour = "black"),
+        plot.subtitle=element_text(face="italic"),
+        plot.caption=element_text(hjust=0),
+        axis.ticks = element_blank(),
+        panel.background = element_blank(),axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, size=2),
+        strip.text.x = element_text(size = 14))
+}
+
+plotTheme <- function(base_size = 12) {
+    theme(
+        text = element_text( color = "black"),
+        plot.title = element_text(size = 14,colour = "black"),
+        plot.subtitle = element_text(face="italic"),
+        plot.caption = element_text(hjust=0),
+        axis.ticks = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_line("grey80", size = 0.1),
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, size=2),
+        strip.background = element_rect(fill = "grey80", color = "white"),
+        strip.text = element_text(size=12),
+        axis.title = element_text(size=12),
+        axis.text = element_text(size=10),
+        plot.background = element_blank(),
+        legend.background = element_blank(),
+        legend.title = element_text(colour = "black", face = "italic"),
+        legend.text = element_text(colour = "black", face = "italic"),
+        strip.text.x = element_text(size = 14)
+    )
+}
 
 
 # Define UI for application that draws a histogram
@@ -34,15 +74,15 @@ ui <- fluidPage(
             sliderInput("budget",
                         "Budget:",
                         min = 100000,
-                        max = 10000000,
-                        value = 1000000,
+                        max = 5000000,
+                        value = 500000,
                         step = 100000,
                         width = '100%'),
             sliderInput("costOfKit",
                         "Cost of kits:",
                         min = 10,
                         max = 250,
-                        value = 20,
+                        value = 50,
                         step = 5,
                         width = '100%'),
             sliderInput("pctOfTract",
@@ -61,6 +101,7 @@ ui <- fluidPage(
                         step = 10,
                         post = '%',
                         width = '100%'),
+            p("After making changes, please wait up to 30 seconds for the output to refresh.")
         ),
 
         # Show a plot of the generated distribution
@@ -134,7 +175,7 @@ server <- function(input, output, session) {
             getServedTractsPlot <- function(df, ttl, st){
                 allocationMap <- ggplot(df) +
                     geom_sf(data = st_union(df))+
-                    geom_sf(aes(fill = isReceivingKits),lwd = 0) +
+                    geom_sf(aes(fill = isReceivingKits),lwd = 0.1) +
                     labs(subtitle = st, title = ttl) +
                     theme(plot.title = element_text(size=22)) +
                     theme(plot.subtitle = element_text(size=14)) +

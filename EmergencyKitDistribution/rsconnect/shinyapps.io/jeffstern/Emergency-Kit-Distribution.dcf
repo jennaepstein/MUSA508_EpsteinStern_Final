@@ -5,8 +5,8 @@ account: jeffstern
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 3393571
-bundleId: 3980714
+bundleId: 3983137
 url: https://jeffstern.shinyapps.io/Emergency-Kit-Distribution/
-when: 1607815028.12439
+when: 1607870036.1612
 asMultiple: FALSE
 asStatic: FALSE
