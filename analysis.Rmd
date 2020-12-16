@@ -1,5 +1,5 @@
 ---
-title: "Predicting Wildfire Risk in Southern California & Developing an Application for Evacuation Preparedness"
+title: "Predicting Wildfires and Preparing Communities in Southern California"
 author: "Jenna Epstein and Jeff Stern"
 date: "December 15, 2020"
 output:
@@ -21,11 +21,11 @@ The California Department of Forestry and Fire Protection (CAL FIRE) recommends 
 
 We want to work with public sector agencies at the county level to strategically distribute emergency supply kits to the right individuals.
 
-To facilitate this engagement, we developed an algorithm and an application. The algorithm has two parts that feed into a composite score: fire probability and vulnerability. For fire probability, we built a model to predict for fire occurrences using environmental risk factors and other spatial features. The predicted probabilities were then incorporated with the Social Vulnerability Index provided by the Center for Disease Control and Prevention.
+To facilitate this engagement, we developed an algorithm and an application called **CalKit**. The algorithm has two parts that feed into a composite score: wildfire risk and social vulnerability. For wildfire risk, we built a model to predict for fire occurrences using environmental risk factors and other spatial features. The predicted probabilities were then incorporated with the Social Vulnerability Index provided by the Center for Disease Control and Prevention.
 
 This final algorithm outputs a prioritized list of census tracts to target. Census tracts are prioritized based in equal parts on the probability of a fire occurring and the Social Vulnerability Index score for that tract. In practice, this will help ensure that kits make it to both those most in-need and those that are most vulnerable to emergencies like wildfires. The algorithm is accessible via an interactive application that allows users to tweak inputs such as budget and cost of the kits. In this way, users can visualize the exact areas and total number of households served. 
 
-Ultimately, the goal is for this application to make it into the hands of program managers who can facilitate the distribution of emergency supply kits, leveraging a user-friendly interface that helps them optimize allocation based on the households who need the support the most.
+Ultimately, the goal is for CalKit to make it into the hands of program managers who can facilitate the distribution of emergency supply kits, leveraging a user-friendly interface that helps them optimize allocation based on the households who need the support the most.
 
 **[Watch a video pitch of our alogirthm and application](https://www.youtube.com/watch?v=LJHMXxgcA64)**
 
@@ -1086,7 +1086,8 @@ tracts17 <- tracts17 %>% st_transform(st_crs(fishnet_final))
 ```
 
 
-# The Final Algorithm and Interactive Application
+# CalKit: An Interactive Application Incorporating a Final Algorithm
+
 We save the output from the fire probability model at the census tract level. These probabilities will be the "wildfire risk" component of the final algorithm powering our application for allocating emergency supply kits.
 
 ## Assessing Population Vulnerability
@@ -1195,6 +1196,7 @@ housingUnitsByTract <- get_acs(geography = "tract", variables = c("B07013_002E")
   filter(GEOID != '06037599100') %>%
   filter(GEOID != '06037599000') %>%
   dplyr::rename(FIPS='GEOID') %>% st_drop_geometry()
+
 ```
 
 
@@ -1320,17 +1322,17 @@ grid.arrange(example4.plot, example5.plot, nrow=1)
 
 ## The Application
 
-For our Los Angeles County program manager, we have made this algorithm available via an interactive application. This application can be used at https://bit.ly/508wildfire or below. The user can adjust the inputs for the algorithm and see a live map and table update to highlight the tracts to serve.
+For our Los Angeles County program manager, we have made this algorithm available via CalKit, an interactive application. CalKit can be used at https://bit.ly/508wildfire or below. The user can adjust the inputs for the algorithm and see a live map and table update to highlight the tracts to serve.
 
 <iframe height="800" width="100%" frameborder="no" src="https://jeffstern.shinyapps.io/Emergency-Kit-Distribution/"> </iframe>
 
 # Discussion and Future Work
-We are excited for the potential of our algorithm to strategically distribute emergency supply kits to the highest priority census tracts in Los Angeles. As seen above, the algorithm helps prioritize a very different group of households compared to just using wildfire risk or just using vulnerability index. The interactive applications gives a program manager the flexibility to explore this data in more detail to make an informed decision about how to spend their budget.
+We are excited for the potential of CalKit to strategically distribute emergency supply kits to the highest priority census tracts in Los Angeles. As seen above, our algorithm helps prioritize a very different group of households compared to just using wildfire risk or just using vulnerability index. The interactive application gives a program manager the flexibility to explore this data in more detail to make an informed decision about how to spend their budget.
 
 Reflecting on the fire probability algorithm, we believe that this is an instrumental part of the final product. We have used historical data to create a model that predicts with a high degree of accuracy where fires may occur. The model generalizes reasonably well to most other counties around Los Angeles. In future work, we’d want to continue to improve the generalizability of the model, especially for areas like Santa Barbara that did not generalize as well. We also want to dive deeper into nuances across census tracts, running spatial cross-validation at this level and examining how well the model generalizes for different types of tracts (eg. tracts of lower and higher socioeconomic status).
 
-We believe that our application can also be extended to serve other geographic areas, such as other parts Los Angeles County and neighboring counties with decent generalizability, like Ventura. Perhaps even more exciting is to think about the use cases that it may have for other allocating other types of emergency relief – such as financial aid or COVID-19 vaccines. 
+We believe that CalKit can also be extended to serve other geographic areas, such as other parts of Los Angeles County and neighboring counties with decent generalizability. Perhaps even more exciting is to think about the use cases that it may have for allocating other types of emergency relief – such as financial aid or COVID-19 vaccines. 
 
-In short, we believe that this is just the beginning. We hope that 508 Analytics can help communities make data-informed decisions when preparing for - and responding to - both emergency disasters and every day problems.
+In short, we believe that this is just the beginning. We hope that 508 Analytics and the CalKit application can help communities make data-informed decisions when preparing for - and responding to - both emergency disasters and everyday problems.
 
 — Jenna Epstein and Jeff Stern, December 2020
