@@ -1,7 +1,7 @@
 ---
 title: "Predicting Wildfire Risk in Southern California, and Developing an Application for Evacuation Preparedness"
 author: "Jenna Epstein and Jeff Stern"
-date: "December, 2020"
+date: "December 15, 2020"
 output:
   html_document:
     toc: true
@@ -14,20 +14,26 @@ knitr::opts_chunk$set(echo = TRUE)
 options(scipen = 999)
 ```
 
-# Introduction
-In the event of a wildfire, there is nothing more important than a successful evacuation. Wildfires in California are bad, and they are particularly bad in and around Los Angeles County. For example, one fire alone in October 2019 resulted in more than 100,000 people being ordered to evacuate their homes. 
+# Motivation
+In the event of a wildfire, there is nothing more important than a successful evacuation. Wildfires in California can be very destructive; recently, they have been particularly concerning in Southern California. For example, one fire alone in October 2019 resulted in more than 100,000 people being ordered to evacuate their homes. 
 
-The California Department of Forestry and Fire Protection (CALFIRE) recommends that all residents assemble an emergency supply kit to be better prepared in the event of a fire evacuation. Emergency supply kits provide critical goods as well as educational materials, such as an evacuation route, that make it feasible for a household to evacuate in the event of a wildfire.
+The California Department of Forestry and Fire Protection (CAL FIRE) recommends that all residents assemble an emergency supply kit to be better prepared in the event of a fire evacuation. Emergency supply kits provide critical goods as well as educational materials, such as an evacuation route, that make it feasible for a household to evacuate in the event of a wildfire.
 
-We want to work with the county to strategically distribute emergency supply kits to the right individuals.
+We want to work with public sector agencies at the county level to strategically distribute emergency supply kits to the right individuals.
 
-To do this, we will develop an algorithm and an application. The algorithm will output a prioritized list of census tracts to target with an offer for a free emergency supply kit. Census tracts will be prioritized based in equal parts on the probability of a fire occurring and the Social Vulnerability Index score for that tract. This will help ensure that kits make it to, both, those most in-need and those that are most vulnerable to emergencies like wildfires. The algorithm will be accessible via an interactive application that allows a program manager to tweak inputs such as budget and cost of the kits. The program manager will be able to visualize the exact areas and total number of community members they’d be able to serve.
+To facilitate this engagement, we developed an algorithm and an application. The algorithm has two parts that feed into a composite score: fire probability and vulnerability. For fire probability, we built a model to predict for fire occurrences using environmental risk factors and other spatial features. The predicted probabilities were then incorporated with the Social Vulnerability Index provided by the Center for Disease Control and Prevention.
 
-[[ Embed youtube video here ]] https://youtu.be/0vPQi7OHWeU
 
-# Setup
+This final algorithm outputs a prioritized list of census tracts to target. Census tracts are prioritized based in equal parts on the probability of a fire occurring and the Social Vulnerability Index score for that tract. In practice, this will help ensure that kits make it to both those most in-need and those that are most vulnerable to emergencies like wildfires. The algorithm is accessible via an interactive application that allows users to tweak inputs such as budget and cost of the kits. In this way, users can visualize the exact areas and total number of households served. 
+
+Ultimately, the goal is for this application to make it into the hands of program managers who can facilitate the distribution of emergency supply kits, leveraging a user-friendly interface that helps them optimize allocation based on the households who need the support the most.
+
+**Click this link to check out our video pitch: https://youtu.be/0vPQi7OHWeU**
+
 ```{r load libraries and functions, message=FALSE, warning=FALSE}
-#libraries
+## Setup
+#load libraries, initial functions, and palettes
+
 library(tidyverse)
 library(dplyr)
 library(plyr)
@@ -182,9 +188,10 @@ paletteInferno8 <- c("#fcff93", "#f6d746", "#f7b61f", "#f06813", "#c83233", "#8c
 ```
 
 
-# Data Wrangling and Feature Engineering
-```{r include=FALSE}
-# need this to standardize the crs - hide code block when running
+# Data Exploration and Feature Engineering
+
+```{r initial fishnet, message=FALSE, warning=FALSE, results='hide'}
+# need this to standardize the crs. will discuss features in detail later in the section.
 
 #JENNA
 fishnet_rasterfeatures <- st_read("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/fishnet_veg_elev_imperv_nofires/fishnet_raster_features.shp")
@@ -219,10 +226,9 @@ fishnet_rasterfeatures$VEG_MAJORITY[fishnet_rasterfeatures$VEG_MAJORITY==7] <- "
 
 ```
 
+Wildfire is not a phenomenon that depends on municipal boundaries, so feature identification and model development took place at a grid cell level to account for a smoother landscape across space. We created a "fishnet" of grid cells in ArcMap to cover Southern California. Five counties along the coast make up the study area for this analysis: **Santa Barbara, Ventura, Los Angeles, Orange,** and **San Diego**. 
 
-## California County Boundaries
-Data is loaded for the state of California and its counties. Five counties along the coast make up the study area for this analysis: Santa Barbara, Ventura, Los Angeles, Orange, and Santa Monica. 
-
+_Note that after the model is developed and cross-validated for accuracy and generalizability, we extrapolate the fire probabilities up to the census tract level, since this is a more meaningful geography for our use case of evacuation kit allocation._
 
 ```{r counties, message=FALSE, warning=FALSE, results='hide'}
 #all cali boundaries (counties)
@@ -239,10 +245,6 @@ socal_counties_coastal <- socal_counties %>% filter(COUNTY_NAME == "Los Angeles"
 # centroids of southern california counties
 centroids.socal_counties <- cbind(socal_counties_coastal, st_coordinates(st_centroid(socal_counties_coastal)))
 
-```
-
-
-```{r fishnet with counties, message=FALSE, warning=FALSE}
 #join fishnet with counties
 fishnet_features <-
   st_centroid(fishnet_rasterfeatures) %>%
@@ -254,12 +256,11 @@ fishnet_features <-
 
 ```
 
+## Wildfire Data
 
-## Historical Fire Data: Perimeters and Presence of Fires
+### Perimeters and Presence of Fires
 
-[Text here about the Outcome Variable and process of bringing in the California fire perimeters].
-
-```{r cali fires, message=FALSE, warning=FALSE}
+```{r cali fires, message=FALSE, warning=FALSE, results='hide'}
 #all perimeters
 all_cali_fires <- st_read("https://opendata.arcgis.com/datasets/e3802d2abf8741a187e73a9db49d68fe_2.geojson") %>% st_transform(st_crs(fishnet_features)) 
 # last five years 
@@ -277,29 +278,30 @@ fires_clipped <- fires_clipped %>% st_transform(st_crs(fishnet_features))
 
 ```
 
-The historical fire perimeter data from CALFIRE is clipped to the southern portion of California and filtered to only include fire perimeters from incidents between 2015-2019. With climate change, environmental conditions have been changing more rapidly over more recent years, so it will be more realistic to train and test on a smaller year range of data when developing the model;
+The historical fire perimeter data comes from the California Department of Forestry and Fire Protection (CAL FIRE), supplied on the California State Geoportal. The data was clipped to the southern portion of California and filtered to only include fire perimeters from incidents between 2015 and 2019. With climate change, environmental conditions have been changing more rapidly over more recent years, so we decided to use a smaller year range of data to develop a more accurate model that is reflective of recent conditions.
 
 
 ```{r map of clipped fire perimeter data, message=FALSE, warning=FALSE}
 #map
+#fires clipped for map
+fires_clipped2 <- st_intersection(st_buffer(fires_clipped,0), socal_counties_coastal)
+
+
 ggplot()+
   geom_sf(data=socal_counties_coastal, fill="gray", color="white") +
-  geom_sf(data=socal_counties, fill="gray", color="white") +
-  geom_sf(data=fires_clipped, fill="#f7b61f", color="#f06813", alpha=0.9) +
+  geom_sf(data=socal_counties_coastal, fill="gray", color="white") +
+  geom_sf(data=fires_clipped2, fill="#f7b61f", color="#f06813", alpha=0.9) +
      geom_text(data = centroids.socal_counties, aes(X, Y, label = COUNTY_NAME), size = 3, fontface="bold")+
   labs(title = "Fire Perimeters in Southern California",
        subtitle="2015-2019",
-       caption="Data Sources: CALFIRE, California State Geoportal") +
+       caption="Data Sources: CAL FIRE; California State Geoportal") +
   mapTheme()
          
 ```
 
+Some feature engineering is done to to calculate the number of fire intersections per fishnet cell and create a new count variable to explore, `n_fires_int`. Then, a binary numeric variable is created called `prev_fire` to indicate the historical presence of a fire (1) or not (0) at any point over the past five years.
 
-## Fire Data: Light Feature Engineering 
-Here, some feature engineering is done to to calculate the number of fire intersections per fishnet cell and create a new count variable to explore, `n_fires_int`. Then, a binary numeric variable is created called `prev_fire` to indicating the historical presence of a fire (1) or not (0) at any point over the past five years.
-
-
-```{r fire feature engineering}
+```{r fire feature engineering, message=FALSE, warning=FALSE}
 ## 1. intersections of fire perimeters with each fishnet cell. using length function: https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/lengths
 fires_fishnet <- fishnet_features %>% mutate(n_fires_int = lengths(st_intersects(fishnet_features, fires_clipped)))
 
@@ -310,11 +312,8 @@ fires_fishnet <-
 
 ```
 
-
-### Map: Fire Incident Intersections per Fishnet Cell
-This map shows the count of fire intersections per fishnet cell. Note that this was ultimately not used in model development, but it is interesting to explore the frequency of fire incidents through count data in this area. 
-
-```{r intersections of fires by fishnet map, message=FALSE, warning=FALSE}
+```{r intersections of fires by fishnet map, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#This map shows the count of fire intersections per fishnet cell. Note that this was ultimately not used in model development, but it is interesting to explore the frequency of fire incidents through count data in this area. 
 # mapping sum of fire incident intersections by cell
 ggplot() +
   geom_sf(data = fires_fishnet, aes(fill = n_fires_int)) +
@@ -325,8 +324,10 @@ ggplot() +
 
 ```
 
-### Map: Historical Fire Occurence (Yes or No) per Fishnet Cell
-This is a map of hte outcome variable, `prev_fire`. It is clear that incidents of fires over the past five years were distributed throughout the area, but especially concentrated around the three middle counties: Ventura, Los Angeles, and Orange.
+### Outcome Variable: Historical Fire Occurence (Yes or No)
+Here, some feature engineering is done to to calculate the number of fire intersections per fishnet cell. Using this count data, a binary numeric variable is created called `prev_fire` to indicate any historical presence of a fire: yes (1) or no (0). This is our **outcome variable** - instead of relying on frequency (count data), it looks at the presence (or not) of any fire occurring at a given cell over the past five years. Note that the count data will be explored when looking at the spatial process of fire distribution later.
+
+Below is a map of this outcome variable, `prev_fire`. It is clear that incidents of fires over the past five years were distributed throughout the area, but especially concentrated around the three middle counties: Ventura, Los Angeles, and Orange.
 
 ```{r yes or no numeric - fires by fishnet, message=FALSE, warning=FALSE}
 # mapping fire incident - yes or no (1 or 0)
@@ -336,40 +337,62 @@ fires_fishnet$prev_fire <- as.character(fires_fishnet$prev_fire)
 
 ggplot() +
   geom_sf(data = fires_fishnet, aes(fill = prev_fire)) +
-  geom_sf(data=socal_counties_coastal, aes(fill=NA))+
   scale_fill_manual(values=palette2)+
   labs(title = "Presence of Historical Fire Incidents in Southern California",
        subtitle="Per Fishnet Cell | 2015-2019 \n \n0=no fire occurred; 1=at least one fire occurred",
        fill="Fire Occurrence",
-      caption="Data Sources: CALFIRE; California State Geoportal") +
+      caption="Data Sources: CAL FIRE; California State Geoportal") +
   mapTheme()+ theme(legend.position='right')
 
 ```
 
 ## Exploring Raster Data: Vegetation, Impervious Surfaces, Elevation
-Due to the size of raster files covering the entire state of California, ArcMap is used to do some initial data wrangling. A fishnet was created with 5000x5000m grid cells to use as the input zones for calculations performed for the following three variables. After these calculations were completed, they were joined back to each unique fishnet grid cell and a shapefile was exported to use in RStudio.
+Due to the size of raster files covering the entire state of California, ArcMap is used to do some initial data wrangling.
 
-### Feature: Vegetation Majority
-[Text here about vegetation risk to wildfire]
-
-This **Vegetation** (`VEG_MAJORITY`) variable is built from raster representation of statewide vegetation from  [SOURCE]. In ArcMap, znal statistics as table was used to calculate the majority vegetation life-form type per grid cell of the fishnet.
+### Feature: Vegetation/Land Type Majority
+Vegetation is fuel to wildfires, especially certain types that are concentrated in the same area. To explore the relationship between majority vegetation types and wildfire occurrence, this **Vegetation/Land Type** (`VEG_MAJORITY`) variable was built from a raster file of statewide vegetation and land type from CAL FIRE's Fire and Resource Assessment Program (FRAP), in cooperation with the California Department of Fish and Wildlife and the USDA Forest Service. In ArcMap, zonal statistics was used to calculate the majority vegetation life-form type per grid cell of the fishnet. The cells in the northwest area are majority conifer and hardwood, indicating a greater presence of forestry throughout. By contrast, the middle section - where Los Angeles County is located - contains cells that are majority urban and shrub.
 
 ```{r vegetation map, message=FALSE, warning=FALSE}
 # map the majority vegetation classification by fishnet cell
 ggplot() +
-  geom_sf(data = fishnet_features, aes(fill = VEG_MAJORITY)) +
+  geom_sf(data = fires_fishnet, aes(fill = VEG_MAJORITY)) +
   scale_fill_manual(values = paletteInferno8)+
-  labs(title = "Majority Vegetation Classification in Southern California",
+  labs(title = "Majority Vegetation/Land Type Classification in Southern California",
        subtitle="Per Fishnet Cell",
        caption="Data source: frap.fire.ca.gov - FVEG geodatabase (2015)") + mapTheme()
 
 ```
+```{r message=FALSE, warning=FALSE}
+#in preparation for the model development, the a new fire variable created to a yes/no variable.
+fires_fishnet <- fires_fishnet %>% mutate(fire_yesno = case_when(fires_fishnet$prev_fire == 1 ~ "yes",
+                                                                 fires_fishnet$prev_fire == 0 ~ "no"))
+```
 
+This bar chart shows that most cells with at least one fire are of majority vegetation type "shrub" or "urban." This is interesting, as it is not typically assumed at urban areas would be more fire prone than those with more tree cover. However, it is clear that the majority of cells are of type "shrub" to begin with. Given the high number of cells of this type in the data, we must not assume that shrubbery will be a strong predictive factor.
+
+```{r message=FALSE, warning=FALSE}
+fires_fishnet_veg <- as.data.frame(fires_fishnet)
+
+fires_fishnet_veg <- fires_fishnet_veg %>%
+  dplyr::select(fire_yesno, VEG_MAJORITY) %>%
+  gather(Variable, value, -fire_yesno) %>%
+  dplyr::count(Variable, value, fire_yesno) %>%
+  ggplot(aes(value, n, fill = fire_yesno)) +   
+    geom_bar(position = "dodge", stat="identity") +
+    scale_fill_manual(values = palette2) +
+    labs(x="Majority Type", y="Count of Cells",
+         title = "Vegetation/Land Type Majority Associations with Fire Occurrence") +
+    plotTheme() + theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+theme(legend.position = "bottom")
+
+fires_fishnet_veg
+
+```
 
 ### Feature: Mean Percent of Impervious Surface
-[Text here about impervious surface risk to wildfire, esp in urban areas]
+Impervious surfaces present concerns for wildfire, since they do not allow water to soak into the ground. If the surface cannot properly absorb water, it may be more difficult to diffuse fires or limit their spread. This is especially a concern in primarily highly-developed or industrial urban areas. As discussed above, majority urban areas contain a higher count of fire occurrences than most other vegetation land cover categories.
 
-This **Impervious Surfaces** (`IMPERV_SURFACE_PCT_MEAN`) variable is derived from a raster file from the National Land Cover Database containing pixel data on surfaces classified as impervious. In ArcMap, znal statistics as table was used to calculate the mean percent impervious surface per grid cell of the fishnet.
+An **Impervious Surfaces** (`IMPERV_SURFACE_PCT_MEAN`) variable was created based on impervious surface raster data from the National Land Cover Database (NLCD). NLCD represents urban impervious surfaces as a percentage of developed surface over 30-meter pixels. The raster file was brought into ArcMap, clipped to the study area, and zonal statistics was used to calculate the mean percent of impervious surface per grid cell. As expected, the map shows that areas of Los Angeles County, especially by the coast where lots of people live, have a higher percentage of impervious surface area.
 
 ```{r impervious surface map, message=FALSE, warning=FALSE}
 
@@ -384,10 +407,7 @@ ggplot() +
 ```
 
 ### Feature: Mean Elevation
-
-[Text here about elevation risk to wildfire]
-
-To create this **Elevation** (`ELEVATION_MEAN`) variable, a raster image of Digital Elevation Model of 15 arc-seconds resolution from the U.S. Geological Survey was brought into ArcMap. Zonal statistics as table was used to calculate the mean elevation per grid cell of the fishnet.
+Elevation affects fire behavior on multiple fronts: changing the level of exposure of an area from wind and precipitation, causing greater spread on steeper slopes, and increasing ignition potential. To create this **Elevation** (`ELEVATION_MEAN`) variable, a raster image of Digital Elevation Model of 15 arc-seconds resolution from the U.S. Geological Survey was brought into ArcMap. Zonal statistics as table was used to calculate the mean elevation per grid cell of the fishnet.
 
 ```{r elevation map, message=FALSE, warning=FALSE}
 # map the mean elevation by fishnet cell
@@ -401,16 +421,15 @@ ggplot() +
        caption="Data source: USGS - Digital Elevation Model of North America, 15 arc-seconds resolution (2009)") + mapTheme()
 ```
 
+## Engineering Weather Data Features
+Weather is also a major factor affecting the conditions for a wildfire ignition and future spread. To incorporate weather data into this analysis, the `{riem}` package was used to import data from the National Oceanic and Atmospheric Administration(NOAA)'s Automated Surface Observing Systems across southern California weather stations. Data was aggregated over the 2015-2019 five-year period, inverse distanced weighting interpolation was used to create a smooth weather surface, and the values were applied to each nearest fishnet cell.
 
-```{r convert prev_fire to int, message=FALSE, warning=FALSE}
+The variables are annual averages of four weather phenomena - `precipitation`, `wind speed`, `temperature`, and `humidity` - and are joined with the fishnet. The maps below show each of these four weather variables.
+
+```{r load in weather data, message=FALSE, warning=FALSE, results="hide"}
 #Convert prev_fire to integer to prepare for model development later
 fires_fishnet$prev_fire <- as.numeric(fires_fishnet$prev_fire)
-```
 
-## Engineering Weather Data Features
-[Jenna: Discuss process of collecting, aggregating, and interpolating for the selected weather variables over the past five years.]
-
-```{r load in weather data, results="hide"}
 #load in specific weather data selection for the stations
 #JENNA
 weather <- read.csv("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/weather_data_socal_2015to2019.csv") 
@@ -419,10 +438,7 @@ weather_annual <- weather %>% st_as_sf(coords = c("lon", "lat"), crs = 4236, agr
 
 #JEFF - add local file path
 #weather <- read.csv("C:/Users/jenna/Documents/GitHub/MUSA508-final/data/weather_data_socal_2015to2019.csv")
-```
 
-
-```{r load in weather data2, message=FALSE, warning=FALSE}
 library(dplyr)
 weather_annual <- weather_annual %>% dplyr::group_by(year, weather_station_id) %>%
       dplyr::summarize(mean_ann_tmpf = mean(mean_tmpf, na.rm = TRUE),
@@ -432,9 +448,7 @@ weather_annual <- weather_annual %>% dplyr::group_by(year, weather_station_id) %
 
 ```
 
-[Jenna: Text here - creating new data frame for data averages by year per station to use with interpolation. Text about inverse distance weighted interpolation for four variables: precipitation, wind speed, temperature, humidity.]
-
-```{r interpolation - precipitation, results='hide'}
+```{r interpolations, message=FALSE, warning=FALSE, results='hide'}
 
 #create new df with only precipitation variable
 weather_precip <- weather_annual %>% dplyr::select(geometry, mean_ann_precipitation)
@@ -451,9 +465,6 @@ precip.idw <- weather_precip.idw %>% dplyr::select(avg_precip_idw, geometry)
 #join to main fishnet
 fishnet_precip <- st_join(fires_fishnet, precip.idw, join=st_equals)
 
-```
-
-```{r interpolation - avg wind speed, results='hide'}
 library(dplyr)
 #new df with only wind speed variable
 weather_wind <- weather_annual %>% dplyr::select(geometry, mean_ann_windspeed)
@@ -468,9 +479,7 @@ avg_windspeed.idw <- weather_wind.idw %>% dplyr::select(avg_windspeed_idw, geome
 
 #join to precip fishnet, create a final fishnet
 fishnet_with_wind <- st_join(fishnet_precip, avg_windspeed.idw, join=st_equals)
-```
 
-```{r interpolation - avg temp, results='hide'}
 library(dplyr)#new df with only temp variable
 weather_temp <- weather_annual %>% dplyr::select(geometry, mean_ann_tmpf)
 
@@ -484,9 +493,7 @@ avg_temp.idw <- weather_temp.idw %>% dplyr::select(avg_temp_idw, geometry)
 
 #join to wind fishnet, create a final fishnet
 fishnet_with_temp <- st_join(fishnet_with_wind, avg_temp.idw, join=st_equals)
-```
 
-```{r interpolation - avg hum, results='hide'}
 library(dplyr)
 #new df with only humidity variable
 weather_hum <- weather_annual %>% dplyr::select(geometry, mean_ann_humidity)
@@ -502,71 +509,88 @@ avg_hum.idw <- weather_hum.idw %>% dplyr::select(avg_hum_idw, geometry)
 #join to wind fishnet, create a final fishnet
 fishnet_with_hum <- st_join(fishnet_with_temp, avg_hum.idw, join=st_equals)
 ```
-
-### Feature Maps: All Weather Features
-These maps show the four engineered weather across coastal southern California. [Jenna: ADD MORE.]
-
-```{r all weather features maps, results='hide'}
+```{r all weather features maps, message=FALSE, warning=FALSE}
 #maps with weather features
 
-# TO DO - GRID ARRANGE BY 4
-#precip
-ggplot()+
-  geom_sf(data=weather_precip.idw, aes(fill=avg_precip_idw)) +
+precip <- ggplot()+
+  geom_sf(data=weather_precip.idw, aes(fill=avg_precip_idw, round(avg_precip_idw, digits=2))) +
   scale_fill_viridis(option="B") +
-  labs(title="Average Precipitation across Southern California",
-       fill="Avg Precip)",
-  subtitle="Inverse Distance Weighted Interpoloation - Weather Station to Fishnet Cell",
-  caption="Data source: ASOS, 2015-2019 Averages")+
-          mapTheme()
+  labs(title="Average Precipitation",
+       subtitle="2015-2019",
+       caption="Data source: NOAA",
+       fill="Inches")+
+          mapTheme() + theme(legend.position='right')
 
-#wind
-ggplot()+
+wind <- ggplot()+
   geom_sf(data=weather_wind.idw, aes(fill=avg_windspeed_idw)) +
   scale_fill_viridis(option="B") +
-  labs(title="Average Wind Speed across Southern California",
-       fill="Avg Wind Speed \n(tenths of m/sec)",
-  subtitle="Inverse Distance Weighted Interpoloation - Weather Station to Fishnet Cell",
-  caption="Data source: ASOS, 2015-2019 Averages")+
-          mapTheme()
+  labs(title="Average Wind Speed",
+       subtitle="2015-2019",
+       caption="Data source: NOAA",
+       fill="Tenths m/sec")+
+          mapTheme() + theme(legend.position='right')
 
-#temp
-ggplot()+
+temp <- ggplot()+
   geom_sf(data=weather_temp.idw, aes(fill=avg_temp_idw)) +
   scale_fill_viridis(option="B") +
-  labs(title="Average Temperature across Southern California",
-       fill="Avg Temperature",
-  subtitle="Inverse Distance Weighted Interpoloation - Weather Station to Fishnet Cell",
-  caption="Data source: ASOS")+
-          mapTheme()
+  labs(title="Average Temperature",
+       subtitle="2015-2019",
+       caption="Data source: NOAA",
+       fill="Degrees (F)")+
+          mapTheme()+ theme(legend.position='right')
 
-#humidity
-ggplot()+
+humidity <- ggplot()+
   geom_sf(data=weather_hum.idw, aes(fill=avg_hum_idw)) +
   scale_fill_viridis(option="B") +
-  labs(title="Average Humidity across Southern California",
-       fill="Avg Humidity",
-  subtitle="Inverse Distance Weighted Interpoloation - Weather Station to Fishnet Cell",
-  caption="Data source: ASOS")+
-          mapTheme()
+  labs(title="Average Relative Humidity",
+       subtitle="2015-2019",
+       caption="Data source: NOAA",
+       fill="Percentage")+
+          mapTheme()+ theme(legend.position='right')
 
+#print maps
+precip
+wind
+temp
+humidity
 
 ```
 
+The four bar charts below help to better explore the relationship between each weather variable and the likelihood of a fire occurrence. None of these variables, however, differ much in their respective means across the respective yes and no categories. Precipitation appears to have the biggest difference of likelihood, but not by a large degree. The importance of these variables will be explored further during iterative model development - alone they may not be strong indicators of fire occurrence, but they may contribute to predictive power as part of a model.
 
-```{r rename to fishnet_final, warning=FALSE}
+
+```{r message=FALSE, warning=FALSE}
 #rename to final fishnet
 fishnet_final <- fishnet_with_hum
 
+# creating new data frame to visualize weather features on bar plots
+fishnet_final_weatherfeatures <- fishnet_final %>% st_drop_geometry() %>%
+  dplyr::rename(avg_relative_humidity = avg_hum_idw) %>%
+    dplyr::rename(avg_temperature = avg_temp_idw) %>%
+  dplyr::rename(avg_wind_speed = avg_windspeed_idw) %>%
+  dplyr::rename(avg_precipitation = avg_precip_idw) 
+  
+
+fishnet_final_weatherfeatures %>%
+  dplyr::select(fire_yesno, avg_precipitation, avg_wind_speed, avg_temperature, avg_relative_humidity) %>%
+  gather(Variable, value, -fire_yesno) %>%
+  ggplot(aes(fire_yesno, value, fill=fire_yesno)) + 
+    geom_bar(position = "dodge", stat = "summary", fun = "mean") + 
+    facet_wrap(~Variable, scales = "free_y") +
+    scale_fill_manual(values = palette2) +
+    labs(x="fire_yesno", y="Mean", 
+         title = "Weather Feature Associations with Fire Occurrence",
+         subtitle="Averages, 2015-2019") +
+    plotTheme() + theme(legend.position = "bottom")
 ```
 
 
 ## Additional Feature Engineering
 
 ### Feature: Tree Mortality Hazard Classification
-[Jenna: Text here.]
+Areas with trees classified as being at higher risk of mortality may contribute to the level of wildfire risk - more dead trees means more fuel for fires to burn. CAL FIRE's Fire and Resource Assessment Program (FRAP) and the U.S. Forest Service have a classification system for areas of high tree mortality, which could be a decent predictor for wildfire risk. AFter loading the data source, the count of cells with at least one intersection of a tree "tier one hazard zone" is calculated to create the feature variable `n_tier1hazard_int`.
 
-```{r tier1 tree mortality feature, message=FALSE, warning=FALSE}
+```{r tier1 tree mortality feature, message=FALSE, warning=FALSE, results='hide'}
 tier1hazard_treemortality <- st_read("https://opendata.arcgis.com/datasets/a71a85136b0b414ea734fdfbe3d7674a_0.geojson") %>% st_transform(st_crs(fishnet_final))
 
 ## intersections of tier 1 areas with each fishnet cell, using length function
@@ -574,11 +598,12 @@ fishnet_final <- fishnet_final %>% mutate(n_tier1hazard_int = lengths(st_interse
 
 ```
 
+### Feature: Distance to Nearest Electric Substation
+Given the presence of high voltage electricity coupled with flammable liquids and industrial equipment, internal malfunctions and damages to electric substations increase risk of fire eruption and spread. In 2018, electric company PG&E neglected maintenance of transmission infrastructure, which sparked the Camp Fire in Paradise, California that caused widespread structural damage and the deaths of over 80 people. Electric substations connect transmission lines, and contain high-voltage switches control electricity flow and magnitude. Given the high amount of electricity at these central hubs relative to the transmission lines, proximity to substations is explored as a fire risk feature.
 
-### Feature: Distance to nearest electric substation
-[Jenna: Text here.]
+The point data for electric substations comes from the California State Geoportal, and the distance from each fishnet cell's centroid to the nearest substation is calculated (in meters). The map below illustrates this `dist_elec_substation` variable. The darker cells, indicating closer distance, are concentrated around the middle of the study area (which covers lots of Los Angeles County).
 
-```{r distance to nearest electric substation, message=FALSE, warning=FALSE}
+```{r distance to nearest electric substation, message=FALSE, warning=FALSE, results='hide'}
 #more feature engineering...
 #read in electric substations
 electric_substations <- st_read("https://opendata.arcgis.com/datasets/7f37f2535d3144e898a53b9385737ee0_0.geojson") %>% 
@@ -607,10 +632,10 @@ ggplot()+
 
 ```
 
-## Feature: Distance to nearest CALFIRE or contract fire facility
-[Jenna: Text here.]
+## Feature: Distance to nearest CAL FIRE or Contract Facility
+The distance to the nearest CAL FIRE or affiliated contract fire facility is also explored as an additional feature. Similarly to the substations, the distance is calculated from each cell's centroid to the nearest facility and stored in a new variable called `dist_fire_facility`. The map below shows that areas in the southern part of the study area (mainly San Diego county) are closer, on average, to such facilities, where those in the more northern parts are further away.
 
-```{r dist to fire facility, message=FALSE, warning=FALSE}
+```{r dist to fire facility, message=FALSE, warning=FALSE, results='hide'}
 #read in facilities
 fire_facilities <- st_read("https://opendata.arcgis.com/datasets/1c8a93cac92f418e98a8fa6a2eaf4265_0.geojson") %>% 
   dplyr::select(Y = LAT, X = LON) %>%
@@ -638,17 +663,16 @@ ggplot()+
 
 ```
 
-
 ## Exploring the Spatial Process of Fire Incidents
 After looking back at the outcome variable map of where the fire incidents occurred, we wanted to explore the distribution of fire incidents across space. 
 
-### Local Moran’s I
+### Local Moran’s _I_
 
-The Local Moran’s I statistic is calculated to explore local spatial autocorrelation of fire incidents. It explores spatial clustering by measuring how similar locations are to their immediate neighbors. High Local Moran’s I values indicate that there is evidence of local clustering.
+The Local Moran’s _I_ statistic is calculated to explore local spatial autocorrelation of fire incidents. It explores spatial clustering by measuring how similar locations are to their immediate neighbors. High Local Moran’s I values indicate that there is evidence of local clustering.
 
-The results of the Local Moran’s I are plotted below, alongside the count of incidents (on the far left). These three outputs mapped include the Local Moran’s I, the p-value, and the significant hotspots (cells with higher local incident counts than expected).
+The results of the Local Moran’s I are plotted below, alongside the count of incidents (on the far left). Also mapped are the p-value and significant hotspots (cells with higher local incident counts than expected).
 
-In the Local Moran’s I map, evidence of spatial clustering exists especially in the center areas of the city, as evidenced by the higher values for cells. The p-value and significant hotspots maps further support this notion of local clustering.
+Based on these maps, there is evidence of spatial clustering exists in the middle part of the study area - specifically, Los Angeles County and into Ventura.
 
 ```{r local morans i, message=FALSE, warning=FALSE}
 library(spdep)
@@ -670,7 +694,7 @@ fishnet_final.localMorans <-
 
 ```
 
-```{r spatial processes, eval=FALSE, message=FALSE, warning=FALSE}
+```{r spatial processes, message=FALSE, warning=FALSE}
 vars <- unique(fishnet_final.localMorans$Variable)
 varList <- list()
 
@@ -681,13 +705,13 @@ for(i in vars){
               aes(fill = Value), colour=NA) +
       scale_fill_viridis(option="B", name="") +
       labs(title=i) +
-      mapTheme() + theme(legend.position="bottom")}
+      mapTheme() + theme(legend.position="right")}
 
-do.call(grid.arrange,c(varList, ncol = 4, top = "Local Morans I statistics, Number of Fire Intersections"))
+do.call(grid.arrange,c(varList, ncol = 2, top = "Local Morans I statistics, Number of Fire Intersections"))
 
 ```
 
-```{r local morans in fishnet, message=FALSE, warning=FALSE}
+```{r local morans in fishnet, message=FALSE, warning=FALSE, results='hide'}
 # create Local Moran's I feature in fishnet_final
 fishnet_final <-
   fishnet_final %>% 
@@ -695,7 +719,7 @@ fishnet_final <-
            ifelse(spdep::localmoran(fishnet_final$n_fires_int, 
                              fishnet_final.weights)[,5] <= 0.0000001, 1, 0))
 
-## there was an issue here with nn function from class, using st_nn instead
+# using st_nn
 fishnet_final <-
   fishnet_final %>% 
   mutate(n_fires_int.isSig.dist = 
@@ -707,12 +731,10 @@ fishnet_final$n_fires_int.isSig.dist <-as.numeric(fishnet_final$n_fires_int.isSi
 
 ```
 
-In order to develop a model that generalizes well, Local Moran’s I is added as a feature in the final fishnet grid, using a dummy variable to indicate that a cell is part of a significant cluster. Then, the average nearest neighbor distance is measured from the centroid of each grid cell to its nearest significant cluster. The p-value chosen is 0.0000001 - the smaller the p-value, the more significant the clusters.
+In order to develop a model that generalizes well, Local Moran’s _I_ is added as a feature in the final fishnet grid, using a dummy variable to indicate that a cell is part of a significant cluster. Then, the average nearest neighbor distance is measured from the centroid of each grid cell to its nearest significant cluster. The p-value chosen is 0.0000001 - the smaller the p-value, the more significant the clusters.
 
-### Nearest Neighbor Distance to Hotspots
+```{r nn distance to hotspots map, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 The distance to highly significant hotspots for fire incidents is shown in this map below.
-
-```{r nn distance to hotspots map, message=FALSE, warning=FALSE}
 ggplot() +
       geom_sf(data = fishnet_final, aes(fill=n_fires_int.isSig.dist), colour=NA) +
       scale_fill_viridis(option="B", direction = 1, 
@@ -721,20 +743,18 @@ ggplot() +
       mapTheme()
 ```
 
-```{r fire_yesno, message=FALSE, warning=FALSE, include=FALSE}
-#in preparation for the model development, the a new fire variable created to a yes/no variable.
-fishnet_final <- fishnet_final %>% mutate(fire_yesno = case_when(fishnet_final$prev_fire == 1 ~ "yes",
-                                                                 fishnet_final$prev_fire == 0 ~ "no"))
-
-```
-
-# Building the Model
-[Jenna: Text here.]
-
 ```{r prev_fire var to numeric, message=FALSE, warning=FALSE}
 # Convert variable to numeric
 fishnet_final$prev_fire <- as.numeric(fishnet_final$prev_fire)  
 ```
+
+
+# Model Development and Testing
+A logistic regression (in the generalized linear model family) predicts the **probability** of an observation based on features of the model. Since we are predicting the probability that a fire will occur, it is well-suited for this case. To maximize the probability of the data observed, the variables included and engineered are iteratively swapped in and out to find the best possible fit. It turns out that all of the engineered features together help improve the model, so they are all included.
+
+The data is divided into training (70%) and testing (30%) sets, and the model runs on the training set. 
+
+
 
 ```{r reg, message=FALSE, warning=FALSE}
 set.seed(3456)
@@ -745,18 +765,20 @@ dataTrain <- fishnet_final[ trainIndex,]
 dataTest  <- fishnet_final[-trainIndex,]
 
 reg.binomial<- glm(prev_fire ~ .,
-                  data=st_drop_geometry(fishnet_final) %>% dplyr::select(-fire_yesno, -uniqueID, -n_fires_int,), family="binomial")
+                  data=st_drop_geometry(dataTrain) %>% dplyr::select(-fire_yesno, -uniqueID, -n_fires_int,), family="binomial")
 
-reg.binomial.r2 <- pR2(reg.binomial)[4]
-summary(reg.binomial)
-print(reg.binomial.r2)
+#reg.binomial.r2 <- pR2(reg.binomial)[4]
+#summary(reg.binomial)
+#print(reg.binomial.r2)
 
 ```
 
-## Model Results & Goodness of Fit
-[Jenna: Text here.]
+## Results and Goodness of Fit
+To ensure the generalizabiilty of the model, it needs to perform well on new data, and also predict relatively accurately across groups.
 
-### Results
+The results of the model for the training data are included below. Note that the evaluation across groups will be explored later when looking at the model performance across the counties in the study area. 
+
+### Results Summary
 
 ```{r reg stats, message=FALSE, warning=FALSE}
 summ(reg.binomial)
@@ -764,7 +786,7 @@ summ(reg.binomial)
 ```
 
 ### Confusion Matrix and Statistics
-The confusion matrix and its statistics for the regression are shown below. The matrix of 0s and 1s shows the comparison between the observed and predicted instances of fire occurrence at the 50% threshold. As shown by the sensitivity and specificity..[ADD MORE]
+The confusion matrix and its statistics for the regression are shown below. The matrix of 0s and 1s shows the comparison between the observed and predicted instances of fire occurrence at the 50% threshold. Sensitivity (the ability to predict true positive outcomes) here is ~46%, and specificity (the ability to predict true negative outcomes) is ~91%. This indicates that the model is better at predicting ares with an absence of a fire, and no fire occurred. 
 
 ```{r reg testprobs, message=FALSE, warning=FALSE}
 testProbs <- data.frame(Outcome = as.factor(dataTest$prev_fire),
@@ -805,16 +827,16 @@ ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) +
 ```
 
 ### ROC Curve
-The Receiver Operating Characteristic (ROC) Curve for the model is shown below. This curve is a helpful goodness of fit indicator, while helping to visualize trade-offs between true positive and false positive metrics at each threshold from 0.01 to 1. A line going “over” the curve indicates a useful fit. According to this curve...[ADD MORE]
+The Receiver Operating Characteristic (ROC) Curve for the model is shown below. This curve is a helpful goodness of fit indicator, while helping to visualize trade-offs between true positive and false positive metrics at each threshold from 0.01 to 1. A line going “over” the curve indicates a useful fit.
 
-The area under the curve (AUC) here is about .79, indicating a fairly useful fit. A reasonable AUC is between 0.5 and 1.
+The area under the curve (AUC) here is about .78, indicating a fairly useful fit. A reasonable AUC is between 0.5 and 1.
 
 ```{r testProbs ROC, message=FALSE, warning=FALSE}
 ggplot(testProbs, aes(d = as.numeric(Outcome), m = Probs)) +
   geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
   style_roc(theme = theme_grey) +
   geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
-  labs(title = "Receiver Operating Characteristic (ROC) Curve", subtitle = "AUC = ~0.79") + plotTheme()
+  labs(title = "Receiver Operating Characteristic (ROC) Curve", subtitle = "AUC = ~0.78") + plotTheme()
 
 ```
 
@@ -824,14 +846,15 @@ pROC::auc(testProbs$Outcome, testProbs$Probs) %>% kable(caption = "Area Under th
 
 ## Cross Validation (CV)
 
-### K-fold CV
-To assess the generalizability of the models, each one is cross-validated. The factor levels for the outcome variable (“yes” and “no”) are reversed at this time to ensure that the cross-validation reads “yes” before “no” (reverse-alphabetical order) and calculates the metrics appropriately.
+While the ROC indicates a relatively good fit, cross-validation is key to ensure that the model generalizes well across contexts.
+
+A k-fold cross validation (CV) is performed. The factor levels for the outcome variable (“yes” and “no”) are reversed at this time to ensure that the cross-validation reads “yes” before “no” (reverse-alphabetical order) and calculates the metrics appropriately.
 
 
 ```{r cv, message=FALSE, warning=FALSE}
 ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
 
-str(fishnet_final$fire_yesno)
+#str(fishnet_final$fire_yesno)
 fishnet_final$fire_yesno <- as.factor(fishnet_final$fire_yesno) 
 fishnet_final$fire_yesno <- fct_rev(fishnet_final$fire_yesno)
 
@@ -841,12 +864,12 @@ cvFit.reg1 <- train(fire_yesno ~ .,
                 metric="ROC", trControl = ctrl)
 ```
 
-### K-fold CV Results & Goodness of Fit
+### CV Results & Goodness of Fit
 
-As with the model above, when cross-validated, it performs better when predicting negatives than it does predicting positive occurrences of fire. While this may initially seem problematic, the ultimate use case for this information will be the allocation of evacuation preparedness kits. Looking at the benefit for the public good, the "cost" of predicting falsely is not really a cost for the community receiving the kit -- preparation materials can be useful in the face of other disasters. 
+As with the initial results of the model, when cross-validated, it performs better when predicting negatives than it does predicting positive occurrences of fire. While this may initially seem problematic, the ultimate use case for this information will be the allocation of evacuation preparedness kits. Looking at the benefit for the public good, the "cost" of predicting falsely is not really a cost for the community receiving the kit -- preparation materials can be useful in the face of other disasters. 
 
 ```{r cv results}
-print(cvFit.reg1) %>% kable(caption="Cross-Validated Results") %>% kable_styling(font_size = 14, full_width = T,bootstrap_options = c("striped", "hover"))
+print(cvFit.reg1) %>% kable(caption="Cross-Validation Results") %>% kable_styling(font_size = 14, full_width = T,bootstrap_options = c("striped", "hover"))
 
 ```
 
@@ -864,7 +887,7 @@ dplyr::select(cvFit.reg1$resample, -Resample) %>%
     facet_wrap(~metric) +
     geom_vline(aes(xintercept = mean), colour = "red", linetype = 3, size = 1.5) +
     scale_x_continuous(limits = c(0, 1)) +
-    labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
+    labs(x="Goodness of Fit", y="Count", title="Cross-Validation Goodness of Fit Metrics",
          subtitle = "Across-fold mean reprented as dotted lines")
 ```
 
@@ -889,7 +912,7 @@ This is simply for illustrative purposes. As our final algorithm ends up extrapo
 
 
 ## Finding the Optimal Threshold
-In order to best optimize this model for use, identifying the threshold that provides the greatest accuracy is important. This is done by running the `iterateThresholds` function and looking at teh results for all thresholds the table of thresholds 0.01 through 0.99. The optimal threshold in this case is 0.55.
+In order to best optimize this model for use, identifying the threshold that provides the greatest accuracy is important. This is done by running the `iterateThresholds` function and looking at the results for all thresholds the table of thresholds 0.01 through 0.99. The optimal threshold in this case is 0.65.
 
 ```{r iterate threshold function, message=FALSE, warning=FALSE}
 iterateThresholds <- function(data, group) {
@@ -927,59 +950,54 @@ return(all_prediction)
 whichThreshold <- iterateThresholds(testProbs)
 
 allThresholds<-kable(whichThreshold) %>%
-  kable_styling(bootstrap_options = "striped", full_width = F)%>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)%>%
   scroll_box(width = "100%", height = "500px")
 
 allThresholds
 ```
 
 
-### How Does Ths Model Perform Across Counties?
+## How Does Ths Model Perform Across Counties?
 
 To assess how well this model performs across space, goodness of fit metrics are calculated across counties.
 
-This visualization below shows the prediction outcomes grouped by county, at the optimal threshold identified (0.55). Accuracy rate is the highest for Los Angeles and San Diego counties. Los Angeles County's negative rate is the second-lowest (behind Ventura). Due to its greater accuracy - coupled with the known degree of population density - Los Angeles presents an compelling space to dive in further when developing our application for evacuation kit distribution. 
+This visualization below shows the prediction outcomes grouped by county, at the optimal threshold identified (0.65). Accuracy rate is the highest for Los Angeles and San Diego counties. Los Angeles County's negative rate is the second-lowest (behind Ventura). Due to its greater accuracy - coupled with the known degree of population density - Los Angeles presents an compelling space to dive in further when developing our application for evacuation kit distribution. 
 
 ```{r counties - confusion matrix metrics, message=FALSE, warning=FALSE}
 
 testProbs.thresholds <- iterateThresholds(data=testProbs, group=COUNTY_NAME)
 
-filter(testProbs.thresholds, Threshold == "0.55")%>%
+filter(testProbs.thresholds, Threshold == "0.65")%>%
     dplyr::select(Accuracy, COUNTY_NAME, True_Positive, True_Negative, False_Negative, False_Positive) %>%
     gather(Variable, Value, -COUNTY_NAME) %>%
     ggplot(aes(Variable, Value, fill = COUNTY_NAME)) +
       geom_bar(aes(fill = COUNTY_NAME), position = "dodge", stat = "identity") +
       scale_fill_manual(values = paletteInferno5) +
       labs(title="Confusion Matrix Rates by County",
-           subtitle = "55% threshold", x = "Outcome",y = "Rate") +
-      plotTheme() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+           fill="County",
+           subtitle = "65% threshold", x = "Outcome",y = "Rate") +
+      plotTheme() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(legend.position="right")
 
 
 ```
 
-Here is an ROC plot showing the goodness of fit for each of the five counties evaluated. It measures trade-offs in trues positive and false positive rates for each threshold. Across thresholds, this plot conveys that the model performs similarly for Orange and San Diego counties, the two furthest southern ones in the study area. This indicates that there may be some spatial processes at play at these local scales, or some additional features not captured in the model. The model does not perform as well for Santa Barbara (as indicated by the closer "hugging" of the trend line). This is consistent with the confusion matrix metrics shown in the bars above. It seems that at this optimal threshold, the model is most accurate when looking around Los Angeles and Ventura.
+Here is an ROC plot showing the goodness of fit for each of the five counties evaluated. It measures trade-offs in trues positive and false positive rates for each threshold. Across all thresholds, this plot conveys that the model performs similarly for Orange and San Diego counties, the two furthest southern ones in the study area. This indicates that there may be some spatial processes at play at these local scales, or some additional features not captured in the model. The model does not perform as well for Santa Barbara (as indicated by the closer "hugging" of the coin-flip line, and even dipping below the line). This is consistent with the confusion matrix metrics shown in the bars above. It seems that this model is the most accurate when looking at Los Angeles and Ventura.
 
 ```{r counties ROC, message=FALSE, warning=FALSE}
 library(pROC)
-#notworking
-#aucTable <- aucTable %>%
- # group_by(COUNTY_NAME)%>% 
-  #dplyr::summarize(AUC = auc(Outcome, Probs)) %>%
-  #mutate(AUC = as.character(round(AUC, 3)))
 
 ggplot(testProbs, aes(d = as.numeric(Outcome), m = Probs, group=COUNTY_NAME, color=COUNTY_NAME)) +
-  geom_roc(n.cuts = 50, labels = F)+
+  geom_roc(n.cuts = 50, labels = F,)+
   scale_color_manual(values = paletteInferno5) +
   style_roc(theme = theme_grey) +
-  geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
-  labs(title = "ROC Curves, by County") + plotTheme()
+  geom_abline(slope = 1, intercept = 0, size = 1.25, color = 'grey') +
+  labs(title = "ROC Curves, by County", color="County") + plotTheme() + theme(legend.position="right")
 
 ```
 
 
-## Preparing for the Use Case: Extrapoloating from Grid Cells to Census Tracts
-Now that we have an optimal threshold, we predict out the probabilities and join them back to the fishnet using each cell's unique ID. This new dataset is then exported, and  data set, we use areal weighting to make estimates from a set of source polygons (the grid cells) to the overlapping, congruent set of target polygons(census tracts). The census tract geometries are incorporated using the US Census Bureau's API.
-
+## Preparing for the Use Case: From Grid Cells to Census Tracts
+Now that we have an optimal threshold, we predict out the probabilities and join them back to the fishnet using each cell's unique ID. Using this data set, we use areal weighting to make estimates from a set of source polygons (the grid cells) to the overlapping, congruent set of target polygons (census tracts). The census tract geometries are incorporated using the US Census Bureau's API. Finally, this dataset is exported to incorporate into the final algorithm and application development discussed in the next section.
 
 ```{r predict fishnet, eval=FALSE, message=FALSE, warning=FALSE}
 predict_fishnet <- 
@@ -989,13 +1007,20 @@ predict_fishnet <-
 
 predict_fishnet <- 
   predict_fishnet %>%
-  mutate(predOutcome  = as.factor(ifelse(predict_fishnet$Probs > 0.55, 1, 0)))
+  mutate(predOutcome  = as.factor(ifelse(predict_fishnet$Probs > 0.65, 1, 0)))
 
 
 fishnet_final_preds <- cbind(fishnet_final,predict_fishnet)
 ```
 
-```{r census tracts, message=FALSE, warning=FALSE}
+Here is a visual representation of what this extrapolation from the grid cells to the census tracts look like for Los Angeles County:
+
+```{r fireprobcell, echo=FALSE, out.width="90%", fig.show='hold', fig.align='center'}
+knitr::include_graphics("C:/Users/jenna/Documents/GitHub/MUSA508-final/fireProbs_cells_to_tracts.png")
+```
+
+
+```{r census tracts, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 library(tidycensus)
 library(dplyr)
 projection <- "EPSG:3310"
@@ -1051,24 +1076,24 @@ tracts17 <- tracts17 %>% st_transform(st_crs(fishnet_final))
 
 ```{r message=FALSE, warning=FALSE}
 #Code - ran separately, but this shows the process
+#1. fishnet_final_preds_only <- fishnet_final_preds %>% dplyr::select(uniqueID, Probs, geometry, COUNTY_NAME)
 
-#fishnet_final_preds_only <- fishnet_final_preds %>% dplyr::select(uniqueID, Probs, geometry, COUNTY_NAME)
-
-#interpolate_probs <-
+#2. interpolate_probs <-
 #  dplyr::select(fishnet_final_preds, Probs) %>%
 #  st_interpolate_aw(., tracts17, extensive = FALSE) %>% st_sf()
 
-#interpolation_tracts <- st_join(interpolate_probs, tracts17, join=st_equals)
 
-#fireProb_tracts <- interpolation_tracts %>% dplyr::select(GEOID, geometry, Probs) %>% st_sf()
+#3. interpolation_tracts <- st_join(interpolate_probs, tracts17, join=st_equals)
 
-#fireProb_tracts_nogeom <- interpolation_tracts %>% dplyr::select(GEOID, Probs) %>% st_drop_geometry()
+#4. fireProb_tracts <- interpolation_tracts %>% dplyr::select(GEOID, geometry, Probs) %>% st_sf()
 
-#write.csv
+#5. fireProb_tracts_nogeom <- interpolation_tracts %>% dplyr::select(GEOID, Probs) %>% st_drop_geometry()
+
+#6. write.csv
 ```
 
 
-# Incorporating the Social Vulnerability Index
+# The Final Algorithm and Interactive Application
 
 ## Assessing Population Vulnerability
 Our final algorithm for allocating emergency supply kits will not only take into account the probability of a fire occurring. We will also prioritize census tracts to receive aid if their populations are more "vulnerable" to an emergency like a wildfire. These populations may be less likely to be able to evacuate or less likely to be able to purchase/own an emergency supply kit on their own.
@@ -1077,6 +1102,7 @@ We initially explored creating our own composite score, but decided to use the r
 
 
 ```{r setup2}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 library(sf)
 library(ggplot2)
 library(tidycensus)
@@ -1087,7 +1113,7 @@ options(scipen = 999)
 
 ```
 
-```{r getVulnIndexScore}
+```{r getVulnIndexScore, message=FALSE, warning=FALSE, results='hide'}
 vulnIndex <- st_read("California-SVI/SVI2018_CALIFORNIA_tract.shp")%>%
   filter(COUNTY == 'Los Angeles') %>%
   filter(FIPS != '06037599100') %>%
@@ -1100,20 +1126,20 @@ vulnIndex <- st_read("California-SVI/SVI2018_CALIFORNIA_tract.shp")%>%
 
 The Social Vulnerability Index is made up of 4 sub-themes: 
 
-```{r fig.cap="Image from CDC"}
+```{r figure, fig.cap="SVI Vulnerability Index", out.width="80%"}
 knitr::include_graphics("C:/Users/jenna/Documents/GitHub/MUSA508-final/SVI_image.jpg")
 ```
 
 We fetched the data for each of these themes for each census tract in Los Angeles County. These plots show the tracts' percentile rankings for the sub-themes as well as the primary composite score.
 
-```{r exploratoryPlots}
+```{r exploratoryPlots, message=FALSE, warning=FALSE, results='hide'}
 svi_theme1 <- ggplot(vulnIndex) +
   geom_sf(data = st_union(vulnIndex))+
   geom_sf(aes(fill = q5(RPL_THEME1)),lwd = 0) +
   scale_fill_manual(values = palette5,
                     labels = qBr(vulnIndex %>% drop_na(RPL_THEME1), "RPL_THEME1", rnd=FALSE),
                     name = "Percentile") +
-  labs(title = "Socioeconomic status", subtitle = "By census tract, 2018 CDC Social Vulnerability Index") +
+  labs(title = "Socioeconomic \nstatus") +
   mapTheme() + 
   theme(plot.title = element_text(size=16))
 
@@ -1123,7 +1149,7 @@ svi_theme2 <- ggplot(vulnIndex) +
   scale_fill_manual(values = palette5,
                     labels = qBr(vulnIndex %>% drop_na(RPL_THEME2), "RPL_THEME2", rnd=FALSE),
                     name = "Percentile") +
-  labs(title = "Household composition & disability", subtitle = "By census tract, 2018 CDC Social Vulnerability Index") +
+  labs(title = "Household composition \n& disability") +
   mapTheme() + 
   theme(plot.title = element_text(size=16))
 
@@ -1133,7 +1159,7 @@ svi_theme3 <- ggplot(vulnIndex) +
   scale_fill_manual(values = palette5,
                     labels = qBr(vulnIndex %>% drop_na(RPL_THEME3), "RPL_THEME3", rnd=FALSE),
                     name = "Percentile") +
-  labs(title = "Minority status & language", subtitle = "By census tract, 2018 CDC Social Vulnerability Index") +
+  labs(title = "Minority status \n& language") +
   mapTheme() + 
   theme(plot.title = element_text(size=16))
 
@@ -1143,19 +1169,22 @@ svi_theme4 <- ggplot(vulnIndex) +
   scale_fill_manual(values = palette5,
                     labels = qBr(vulnIndex %>% drop_na(RPL_THEME4), "RPL_THEME4", rnd=FALSE),
                     name = "Percentile") +
-  labs(title = "Housing type & transportation", subtitle = "By census tract, 2018 CDC Social Vulnerability Index") +
+  labs(title = "Housing type \n& transportation") +
   mapTheme() + 
   theme(plot.title = element_text(size=16))
 
-grid.arrange(svi_theme1, svi_theme2, svi_theme3, svi_theme4, nrow=2,ncol=2)
+grid.arrange(svi_theme1, svi_theme2, svi_theme3, svi_theme4, nrow=2,ncol=2, top="Percentile Rankings, 2018 CDC Social Vulnerability Index Sub-Themes \n By Census Tract, Los Angeles County")
+```
 
+
+```{r exploratoryPlots2, message=FALSE, warning=FALSE}
 svi_total <- ggplot(vulnIndex) +
   geom_sf(data = st_union(vulnIndex))+
   geom_sf(aes(fill = q5(RPL_THEMES)),lwd = 0) +
   scale_fill_manual(values = palette5,
                     labels = qBr(vulnIndex %>% drop_na(RPL_THEMES), "RPL_THEMES", rnd=FALSE),
                     name = "Percentile") +
-  labs(title = "Social Vulnerability Index Composite", subtitle = "By census tract, 208 CDC Social Vulnerability Index") +
+  labs(title = "Social Vulnerability Index Composite", subtitle = "By Census Tract, Los Angeles County", caption="2018 CDC Social Vulnerability Index")+
   mapTheme() + 
   theme(plot.title = element_text(size=16))
 
@@ -1164,8 +1193,7 @@ svi_total
 
 Although the SVI dataset includes population information for each tract, we want to be able to allocate one kit per household. We get household data from the American Community Survey and join it with our social vulnerability index information.
 
-```{r getHousingUnitData, message=FALSE, warning=FALSE}
-library(dplyr)
+```{r getHousingUnitData, message=FALSE, warning=FALSE, include=FALSE}
 projection <- "EPSG:6423"
 
 #census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", install=TRUE, overwrite=TRUE)
@@ -1176,14 +1204,16 @@ housingUnitsByTract <- get_acs(geography = "tract", variables = c("B07013_002E")
         dplyr::select(-starts_with("B"), -NAME)  %>%
   filter(GEOID != '06037599100') %>%
   filter(GEOID != '06037599000') %>%
-  dplyr::rename(FIPS='GEOID') %>%
-  st_drop_geometry()
+  dplyr::rename(FIPS='GEOID') %>% st_drop_geometry()
+```
 
+
+```{r getHousingUnitData2, message=FALSE, warning=FALSE}
 vulnIndex <- vulnIndex %>% dplyr::left_join(housingUnitsByTract, left=TRUE)
 
 ```
 
-We combine the Social Vulnerability Index with our fire risk scores for each tract.
+We combine the Social Vulnerability Index with our fire probabilities for each tract.
 
 ```{r combineScores, message=FALSE, warning=FALSE}
 fireProbabilities <- read.csv("fireProb_tracts_nogeom.csv") %>%
@@ -1255,7 +1285,7 @@ getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTra
 
 ```
 
-This function uses the dataframe from getPriotizedCensusTracts() to generate a map of the tracts that can be served.
+This function uses the dataframe from `getPriotizedCensusTracts()` to generate a map of the tracts that can be served.
 
 ```{r plot, message=FALSE, warning=FALSE}
 getServedTractsPlot <- function(df, ttl, st){
@@ -1284,8 +1314,8 @@ example5 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20, pctOfTr
 
 example6 <- getPrioritizedCensusTracts(budget = 6100000, costOfKit = 20, pctOfTract = 0.8, weight=0.5)
 
-sum(example6$totalKitsToSend)
-sum(example6$totalKitsToSend)
+#sum(example6$totalKitsToSend)
+#sum(example6$totalKitsToSend)
 
 example1.plot <- getServedTractsPlot(example1, "Tracts served (ex. 1)", "$250k and $20 kits")
 example2.plot <- getServedTractsPlot(example2, "Tracts served (ex. 2)","Increased budget to $2.5m")
@@ -1305,17 +1335,19 @@ example5.plot <- getServedTractsPlot(example5, "Tracts served (ex. 5)","Only pri
 grid.arrange(example4.plot, example5.plot, nrow=1)
 ```
 
-# Interactive Application
+## The Application
 
-For our Los Angeles County program manager, we have made this algorithm available via an interactive application. This application can be used at https://bit.ly/508wildfire or below. The manager can adjust the inputs for the algorithm and see a live map and table update to highlight the tracts to serve.
+For our Los Angeles County program manager, we have made this algorithm available via an interactive application. This application can be used at https://bit.ly/508wildfire or below. The user can adjust the inputs for the algorithm and see a live map and table update to highlight the tracts to serve.
 
-[EMBED]
+<iframe height="800" width="100%" frameborder="no" src="https://jeffstern.shinyapps.io/Emergency-Kit-Distribution/"> </iframe>
 
 # Discussion and Future Work
 We are excited for the potential of our algorithm to strategically distribute emergency supply kits to the highest priority census tracts in Los Angeles. As seen above, the algorithm helps prioritize a very different group of households compared to just using wildfire risk or just using vulnerability index. The interactive applications gives a program manager the flexibility to explore this data in more detail to make an informed decision about how to spend their budget.
 
-Reflecting on the fire probability algorithm, we believe that this is an instrumental part of the final product. We have used historical data to create a model that predicts with a high degree of accuracy where fires may occur. The model generalizes reasonably well to most other counties around Los Angeles. In future work, we’d want to continue to improve the generalizability of the model and examine how well it generalizes for different types of tracts (eg. tracts with lower and higher socioeconomic status).
+Reflecting on the fire probability algorithm, we believe that this is an instrumental part of the final product. We have used historical data to create a model that predicts with a high degree of accuracy where fires may occur. The model generalizes reasonably well to most other counties around Los Angeles. In future work, we’d want to continue to improve the generalizability of the model, especially for areas like Santa Barbara that did not generalize as well. We also want to dive deeper into nuances across census tracts, running spatial cross-validation at this level and examining how well the model generalizes for different types of tracts (eg. tracts of lower and higher socioeconomic status).
 
-We believe that our application can also be extended to serve other geographic areas, such as other Los Angeles County. Perhaps even more exciting is to think about the use cases that it may have for other allocating other types of emergency relief – such as financial aid or coronavirus vaccines. We believe that this is just the beginning. We hope that 508 Analytics can help communities make data-informed responses to emergency disasters and every day problems.
+We believe that our application can also be extended to serve other geographic areas, such as other parts Los Angeles County and neighboring counties with decent generalizability, like Ventura. Perhaps even more exciting is to think about the use cases that it may have for other allocating other types of emergency relief – such as financial aid or COVID-19 vaccines. 
 
-- Jenna Epstein and Jeff Stern, December 2020
+In short, we believe that this is just the beginning. We hope that 508 Analytics can help communities make data-informed decisions when preparing for - and responding to - both emergency disasters and every day problems.
+
+-- Jenna Epstein and Jeff Stern, December 2020
