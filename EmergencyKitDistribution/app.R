@@ -66,7 +66,7 @@ plotTheme <- function(base_size = 12) {
 ui <- fluidPage(
 
     # Application title
-    titlePanel("Allocating Emergency Supply Kits in L.A. County"),
+    titlePanel("CalKit — Allocating emergency supply kits in L.A. county"),
 
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
