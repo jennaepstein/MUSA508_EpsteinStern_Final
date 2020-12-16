@@ -23,12 +23,11 @@ We want to work with public sector agencies at the county level to strategically
 
 To facilitate this engagement, we developed an algorithm and an application. The algorithm has two parts that feed into a composite score: fire probability and vulnerability. For fire probability, we built a model to predict for fire occurrences using environmental risk factors and other spatial features. The predicted probabilities were then incorporated with the Social Vulnerability Index provided by the Center for Disease Control and Prevention.
 
-
 This final algorithm outputs a prioritized list of census tracts to target. Census tracts are prioritized based in equal parts on the probability of a fire occurring and the Social Vulnerability Index score for that tract. In practice, this will help ensure that kits make it to both those most in-need and those that are most vulnerable to emergencies like wildfires. The algorithm is accessible via an interactive application that allows users to tweak inputs such as budget and cost of the kits. In this way, users can visualize the exact areas and total number of households served. 
 
 Ultimately, the goal is for this application to make it into the hands of program managers who can facilitate the distribution of emergency supply kits, leveraging a user-friendly interface that helps them optimize allocation based on the households who need the support the most.
 
-**Click this link to check out our video pitch: https://youtu.be/0vPQi7OHWeU**
+**[Watch a video pitch of our alogirthm and application](https://www.youtube.com/watch?v=LJHMXxgcA64)**
 
 ```{r load libraries and functions, message=FALSE, warning=FALSE}
 ## Setup
@@ -754,8 +753,6 @@ A logistic regression (in the generalized linear model family) predicts the **pr
 
 The data is divided into training (70%) and testing (30%) sets, and the model runs on the training set. 
 
-
-
 ```{r reg, message=FALSE, warning=FALSE}
 set.seed(3456)
 trainIndex <- createDataPartition(fishnet_final$prev_fire, p = .70,
@@ -849,7 +846,6 @@ pROC::auc(testProbs$Outcome, testProbs$Probs) %>% kable(caption = "Area Under th
 While the ROC indicates a relatively good fit, cross-validation is key to ensure that the model generalizes well across contexts.
 
 A k-fold cross validation (CV) is performed. The factor levels for the outcome variable (“yes” and “no”) are reversed at this time to ensure that the cross-validation reads “yes” before “no” (reverse-alphabetical order) and calculates the metrics appropriately.
-
 
 ```{r cv, message=FALSE, warning=FALSE}
 ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
@@ -1016,7 +1012,7 @@ fishnet_final_preds <- cbind(fishnet_final,predict_fishnet)
 Here is a visual representation of what this extrapolation from the grid cells to the census tracts look like for Los Angeles County:
 
 ```{r fireprobcell, echo=FALSE, out.width="90%", fig.show='hold', fig.align='center'}
-knitr::include_graphics("C:/Users/jenna/Documents/GitHub/MUSA508-final/fireProbs_cells_to_tracts.png")
+knitr::include_graphics("C:/Users/jenna/Documents/GitHub/MUSA508-final/images/fireProbs_cells_to_tracts.png")
 ```
 
 
@@ -1027,9 +1023,6 @@ projection <- "EPSG:3310"
 
 #Jenna
 census_api_key("41e1c0d912341017fa6f36a5da061d3b23de335e", overwrite=TRUE)
-
-#Jeff
-#census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", overwrite=TRUE)
 
 acs_vars <- c("B25026_001E","B02001_002E","B15001_050E",
                          "B15001_009E","B19013_001E","B25058_001E",
@@ -1098,14 +1091,10 @@ tracts17 <- tracts17 %>% st_transform(st_crs(fishnet_final))
 ## Assessing Population Vulnerability
 Our final algorithm for allocating emergency supply kits will not only take into account the probability of a fire occurring. We will also prioritize census tracts to receive aid if their populations are more "vulnerable" to an emergency like a wildfire. These populations may be less likely to be able to evacuate or less likely to be able to purchase/own an emergency supply kit on their own.
 
-We initially explored creating our own composite score, but decided to use the reputable CDC Social Vulnerability Index (https://www.atsdr.cdc.gov/placeandhealth/svi/index.html). The SVI uses variables from the American Community Survey. Among its many uses, CDC recommends using the score to "allocate emergency preparedness funding by community need."
-
+We initially explored creating our own composite score, but decided to use [the reputable CDC Social Vulnerability Index](https://www.atsdr.cdc.gov/placeandhealth/svi/index.html). The SVI uses variables from the American Community Survey. Among its many uses, CDC recommends using the score to "allocate emergency preparedness funding by community need."
 
 ```{r setup2}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
-library(sf)
-library(ggplot2)
-library(tidycensus)
 library(dplyr)
 palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
 projection <- "EPSG:6423"
@@ -1114,7 +1103,7 @@ options(scipen = 999)
 ```
 
 ```{r getVulnIndexScore, message=FALSE, warning=FALSE, results='hide'}
-vulnIndex <- st_read("California-SVI/SVI2018_CALIFORNIA_tract.shp")%>%
+vulnIndex <- st_read("data/California-SVI/SVI2018_CALIFORNIA_tract.shp")%>%
   filter(COUNTY == 'Los Angeles') %>%
   filter(FIPS != '06037599100') %>%
   filter(FIPS != '06037599000') %>%
@@ -1127,10 +1116,10 @@ vulnIndex <- st_read("California-SVI/SVI2018_CALIFORNIA_tract.shp")%>%
 The Social Vulnerability Index is made up of 4 sub-themes: 
 
 ```{r figure, fig.cap="SVI Vulnerability Index", out.width="80%"}
-knitr::include_graphics("C:/Users/jenna/Documents/GitHub/MUSA508-final/SVI_image.jpg")
+knitr::include_graphics("C:/Users/jenna/Documents/GitHub/MUSA508-final/images/SVI_image.jpg")
 ```
 
-We fetched the data for each of these themes for each census tract in Los Angeles County. These plots show the tracts' percentile rankings for the sub-themes as well as the primary composite score.
+We retrieved the data for the Social Vulnerability Index themes for each census tract in Los Angeles County. These plots show the tracts' percentile rankings for the sub-themes as well as the primary composite score.
 
 ```{r exploratoryPlots, message=FALSE, warning=FALSE, results='hide'}
 svi_theme1 <- ggplot(vulnIndex) +
@@ -1193,7 +1182,7 @@ svi_total
 
 Although the SVI dataset includes population information for each tract, we want to be able to allocate one kit per household. We get household data from the American Community Survey and join it with our social vulnerability index information.
 
-```{r getHousingUnitData, message=FALSE, warning=FALSE, include=FALSE}
+```{r getHousingUnitData, message=FALSE, warning=FALSE}
 projection <- "EPSG:6423"
 
 #census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", install=TRUE, overwrite=TRUE)
@@ -1226,18 +1215,19 @@ fireProbabilities <- fireProbabilities %>%
 
 finalDataSet <- vulnIndex %>% dplyr::left_join(fireProbabilities, left=TRUE)
 
-#finalDataSet <- st_write("EmergencyKitDistribution/finalDataSet-forShiny.shp")
+# Exporting this dataset for use with the Shiny App:
+# st_write("EmergencyKitDistribution/finalDataSet-forShiny.shp")
 ```
 
 
-Finally, we create a function that can be used to output a prioritized list of census tracts. The inputs for the function are:
+The `getPrioritizedCensusTracts()` function that can be used to invoke our algorithm and output a prioritized list of census tracts. The inputs for the function are:
 
 1. Total allocated budget (default: $250,000)
 2. Cost of the kit (default: $20)
 3. Percentage of households in each tract to distribute a kit (default: 100%)
 4. Amount of weight to give to fire risk score, vs. vulnerability index (default: 50%)
 
-The function returns a data set of all the tracts with a column added to indicate whether or not they should receive kits.
+The function returns a dataset of all the Los Angeles County tracts with columns added to indicate whether or not they should receive kits and how many they should receive.
 
 ```{r finalOutput, message=FALSE, warning=FALSE}
 
@@ -1261,13 +1251,10 @@ getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTra
       housingUnits <- floor(d[tract.i,]$HousingUnits * pctOfTract)
       if (housingUnits == 0) { tract.i <- tract.i+1; next; }
       costForTract <- housingUnits*costOfKit
-   #   print(paste("Tract #",d[tract.i,]$FIPS, " is priority #", tract.i, " and has ", addComma(housingUnits), " housing units, Cost of kits: $",addComma(costForTract), sep=""))
       if(costForTract <= budgetRemaining) {
-  #      print(paste("Budget remaining: $", addComma(budgetRemaining),sep=""))
         kitsSent <- housingUnits
       } else {
         possibleHousingUnits <- floor(budgetRemaining/costOfKit)
- #       print(paste("Cost for whole tract exceeds remaining budget, partial distribution to",addComma(floor(possibleHousingUnits))," housing units possible"))
         kitsSent <- possibleHousingUnits
       }
       budgetRemaining <- budgetRemaining - costForTract
@@ -1275,7 +1262,6 @@ getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTra
       d[tract.i,]$totalKitsToSend <- kitsSent
       tract.i <- tract.i + 1  
   }
-#  print(paste(addComma(totalHousingUnits),"housing units in", tract.i, "LA County tracts can be served by investing $",addComma(budget),"in the emergency kit allocation program (not including overhead costs)"))
   attr(d, "budget") <- budget
   attr(d, "costOfKit") <- costOfKit
   attr(d, "pctOfTract") <- pctOfTract
@@ -1285,7 +1271,7 @@ getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTra
 
 ```
 
-This function uses the dataframe from `getPriotizedCensusTracts()` to generate a map of the tracts that can be served.
+The `getServedTractsPlot()` function uses the dataframe from `getPriotizedCensusTracts()` to generate a map of the tracts that can be served.
 
 ```{r plot, message=FALSE, warning=FALSE}
 getServedTractsPlot <- function(df, ttl, st){
@@ -1302,20 +1288,13 @@ getServedTractsPlot <- function(df, ttl, st){
 ```
 
 
-We are now able to see exactly which tracts are served. Here are a few examples where we're varying the budget and then the percentage of households in a tract that we send a kit.
+We are now able to see exactly which tracts are served. Here are a few examples where we are varying the budget and then the percentage of households in a tract that we send a kit. Each time the algorithm prioritizes a different set of tracts.
 
 ```{r demoFinalAlgorithm, message=FALSE, warning=FALSE}
 
 example1 <- getPrioritizedCensusTracts(budget = 250000, costOfKit = 20)
 example2 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20)
 example3 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20, pctOfTract = 0.5)
-example4 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20, pctOfTract = 0.5, weight=0)
-example5 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20, pctOfTract = 0.5, weight=1)
-
-example6 <- getPrioritizedCensusTracts(budget = 6100000, costOfKit = 20, pctOfTract = 0.8, weight=0.5)
-
-#sum(example6$totalKitsToSend)
-#sum(example6$totalKitsToSend)
 
 example1.plot <- getServedTractsPlot(example1, "Tracts served (ex. 1)", "$250k and $20 kits")
 example2.plot <- getServedTractsPlot(example2, "Tracts served (ex. 2)","Increased budget to $2.5m")
@@ -1326,9 +1305,12 @@ grid.arrange(example1.plot, example2.plot, example3.plot, nrow=2)
 
 We can also adjust the weights to see how different tracts would be served if we ONLY prioritized based off the vulnerability index or ONLY prioritized based off of the probability of a fire occurring.
 
-**As this graphic makes clear, by only using wildfire tracts or only using census data, you’d be serving very different and distant households.**
+**As this graphic makes clear, by only using wildfire tracts or only using census data, a program manager would be serving very different and distant households.**
 
 ```{r demoFinalAlgopt2}
+example4 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20, pctOfTract = 0.5, weight=0)
+example5 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20, pctOfTract = 0.5, weight=1)
+
 example4.plot <- getServedTractsPlot(example4, "Tracts served (ex. 4)","Only prioritizing on vulnerability index")
 example5.plot <- getServedTractsPlot(example5, "Tracts served (ex. 5)","Only prioritizing on fire probability")
 
@@ -1350,4 +1332,4 @@ We believe that our application can also be extended to serve other geographic a
 
 In short, we believe that this is just the beginning. We hope that 508 Analytics can help communities make data-informed decisions when preparing for - and responding to - both emergency disasters and every day problems.
 
--- Jenna Epstein and Jeff Stern, December 2020
+— Jenna Epstein and Jeff Stern, December 2020

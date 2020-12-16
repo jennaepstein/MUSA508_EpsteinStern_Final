@@ -1,6 +1,19 @@
-# MUSA508-final
-Wildfire risk app
+# Predicting wildfire risk and developing an app to distribute emergency supply kits
 
-With climate change, the State of California is exhibiting increased threat of wildfire. No doubt fire risk is a function of climate and weather, but also a host of time-invariant, spatial variables such as vegetation, elevation, land cover and more. Your challenge is to integrate [California’s Fire Perimeter data](https://frap.fire.ca.gov/frap-projects/fire-perimeters/) for 2-3 or years with [other fire data, vegetation, land cover data, elevation data and other](https://frap.fire.ca.gov/mapping/gis-data/), to estimate fire risk. Can you use spatial cross-validation to validate this model?
+## About the project
 
-There are multiple possible model approaches here. For an app, granted none of us are forestry experts, but can you design a fire management app that prioritizes where naturalist should clear brush, do burns, etc. Maybe, this is an app aimed at insurance companies or homeowners?
+We want to work with public sector agencies at the county level to strategically distribute emergency supply kits to the right individuals.
+
+To facilitate this engagement, we developed an algorithm and an application. The algorithm has two parts that feed into a composite score: fire probability and vulnerability. For fire probability, we built a model to predict for fire occurrences using environmental risk factors and other spatial features. The predicted probabilities were then incorporated with the Social Vulnerability Index provided by the Center for Disease Control and Prevention.
+
+This final algorithm outputs a prioritized list of census tracts to target. Census tracts are prioritized based in equal parts on the probability of a fire occurring and the Social Vulnerability Index score for that tract. In practice, this will help ensure that kits make it to both those most in-need and those that are most vulnerable to emergencies like wildfires. The algorithm is accessible via an interactive application that allows users to tweak inputs such as budget and cost of the kits. In this way, users can visualize the exact areas and total number of households served. 
+
+--
+
+# Explore the project
+
+[Video pitch](https://www.youtube.com/watch?v=LJHMXxgcA64)
+
+[Deep dive of the algorithm]()
+
+[Interactive application](https://jeffstern.shinyapps.io/Emergency-Kit-Distribution/)
