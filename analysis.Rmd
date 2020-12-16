@@ -1,5 +1,5 @@
 ---
-title: "Predicting Wildfire Risk in Southern California, and Developing an Application for Evacuation Preparedness"
+title: "Predicting Wildfire Risk in Southern California & Developing an Application for Evacuation Preparedness"
 author: "Jenna Epstein and Jeff Stern"
 date: "December 15, 2020"
 output:
@@ -1087,11 +1087,12 @@ tracts17 <- tracts17 %>% st_transform(st_crs(fishnet_final))
 
 
 # The Final Algorithm and Interactive Application
+We save the output from the fire probability model at the census tract level. These probabilities will be the "wildfire risk" component of the final algorithm powering our application for allocating emergency supply kits.
 
 ## Assessing Population Vulnerability
-Our final algorithm for allocating emergency supply kits will not only take into account the probability of a fire occurring. We will also prioritize census tracts to receive aid if their populations are more "vulnerable" to an emergency like a wildfire. These populations may be less likely to be able to evacuate or less likely to be able to purchase/own an emergency supply kit on their own.
+Not only does our final algorithm take into account wildfire risk, but it also prioritizes census tracts to receive aid if their populations are more "vulnerable" to an emergency - like a wildfire. These populations may be less likely to be able to evacuate or less likely to be able to purchase/own an emergency supply kit on their own.
 
-We initially explored creating our own composite score, but decided to use [the reputable CDC Social Vulnerability Index](https://www.atsdr.cdc.gov/placeandhealth/svi/index.html). The SVI uses variables from the American Community Survey. Among its many uses, CDC recommends using the score to "allocate emergency preparedness funding by community need."
+We initially explored creating our own composite score for vulnerability, but decided to use [the reputable CDC Social Vulnerability Index](https://www.atsdr.cdc.gov/placeandhealth/svi/index.html). The SVI uses variables from the American Community Survey. Among its many uses, CDC recommends using the score to "allocate emergency preparedness funding by community need."
 
 ```{r setup2}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
@@ -1182,7 +1183,7 @@ svi_total
 
 Although the SVI dataset includes population information for each tract, we want to be able to allocate one kit per household. We get household data from the American Community Survey and join it with our social vulnerability index information.
 
-```{r getHousingUnitData, message=FALSE, warning=FALSE}
+```{r getHousingUnitData, message=FALSE, warning=FALSE, results='hide'}
 projection <- "EPSG:6423"
 
 #census_api_key("e59695f18b5f5959947fd9098feba458ca285cc5", install=TRUE, overwrite=TRUE)
@@ -1202,7 +1203,7 @@ vulnIndex <- vulnIndex %>% dplyr::left_join(housingUnitsByTract, left=TRUE)
 
 ```
 
-We combine the Social Vulnerability Index with our fire probabilities for each tract.
+We combine the Social Vulnerability Index with our fire risk for each tract.
 
 ```{r combineScores, message=FALSE, warning=FALSE}
 fireProbabilities <- read.csv("fireProb_tracts_nogeom.csv") %>%
