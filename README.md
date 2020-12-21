@@ -14,6 +14,6 @@ This final algorithm outputs a prioritized list of census tracts to target. Cens
 
 [Video pitch](https://www.youtube.com/watch?v=LJHMXxgcA64)
 
-[Deep dive of the algorithm]()
+[Deep dive of the algorithm](https://jeffstern.github.io/epsteinstern-analysis.html)
 
 [Interactive application](https://jeffstern.shinyapps.io/Emergency-Kit-Distribution/)
