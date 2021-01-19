@@ -17,17 +17,17 @@ options(scipen = 999)
 # Motivation
 In the event of a wildfire, there is nothing more important than a successful evacuation. Wildfires in California can be very destructive; recently, they have been particularly concerning in Southern California. For example, one fire alone in October 2019 resulted in more than 100,000 people being ordered to evacuate their homes. 
 
-The California Department of Forestry and Fire Protection (CAL FIRE) recommends that all residents assemble an emergency supply kit to be better prepared in the event of a fire evacuation. Emergency supply kits provide critical goods as well as educational materials, such as an evacuation route, that make it feasible for a household to evacuate in the event of a wildfire.
+The [California Department of Forestry and Fire Protection (CAL FIRE)](https://www.fire.ca.gov/) recommends that all residents assemble an emergency supply kit to be better prepared in the event of a fire evacuation. Emergency supply kits provide critical goods as well as educational materials, such as an evacuation route, that make it feasible for a household to evacuate in the event of a wildfire.
 
 We want to work with public sector agencies at the county level to strategically distribute emergency supply kits to the right individuals.
 
-To facilitate this engagement, we developed an algorithm and an application called **CalKit**. The algorithm has two parts that feed into a composite score: wildfire risk and social vulnerability. For wildfire risk, we built a model to predict for fire occurrences using environmental risk factors and other spatial features. The predicted probabilities were then incorporated with the Social Vulnerability Index provided by the Center for Disease Control and Prevention.
+To facilitate this engagement, we developed an algorithm and an application called **CalKit**. The algorithm has two parts that feed into a composite score: wildfire risk and social vulnerability. For wildfire risk, we built a model to predict for fire occurrences using environmental risk factors and other spatial features. The predicted probabilities were then incorporated with the [Social Vulnerability Index](https://www.atsdr.cdc.gov/placeandhealth/svi/index.html) provided by the Centers for Disease Control and Prevention.
 
 This final algorithm outputs a prioritized list of census tracts to target. Census tracts are prioritized based in equal parts on the probability of a fire occurring and the Social Vulnerability Index score for that tract. In practice, this will help ensure that kits make it to both those most in-need and those that are most vulnerable to emergencies like wildfires. The algorithm is accessible via an interactive application that allows users to tweak inputs such as budget and cost of the kits. In this way, users can visualize the exact areas and total number of households served. 
 
 Ultimately, the goal is for CalKit to make it into the hands of program managers who can facilitate the distribution of emergency supply kits, leveraging a user-friendly interface that helps them optimize allocation based on the households who need the support the most.
 
-**[Watch a video pitch of our alogirthm and application](https://www.youtube.com/watch?v=LJHMXxgcA64)**
+**[Watch a video pitch of our algorithm and application](https://www.youtube.com/watch?v=LJHMXxgcA64)**
 
 ```{r load libraries and functions, message=FALSE, warning=FALSE}
 ## Setup
@@ -349,7 +349,7 @@ ggplot() +
 Due to the size of raster files covering the entire state of California, ArcMap is used to do some initial data wrangling.
 
 ### Feature: Vegetation/Land Type Majority
-Vegetation is fuel to wildfires, especially certain types that are concentrated in the same area. To explore the relationship between majority vegetation types and wildfire occurrence, this **Vegetation/Land Type** (`VEG_MAJORITY`) variable was built from a raster file of statewide vegetation and land type from CAL FIRE's Fire and Resource Assessment Program (FRAP), in cooperation with the California Department of Fish and Wildlife and the USDA Forest Service. In ArcMap, zonal statistics was used to calculate the majority vegetation life-form type per grid cell of the fishnet. The cells in the northwest area are majority conifer and hardwood, indicating a greater presence of forestry throughout. By contrast, the middle section - where Los Angeles County is located - contains cells that are majority urban and shrub.
+Vegetation is fuel to wildfires, especially certain types that are concentrated in the same area. To explore the relationship between majority vegetation types and wildfire occurrence, this **vegetation/land type** (`VEG_MAJORITY`) variable was built from a raster file of statewide vegetation and land type from CAL FIRE's Fire and Resource Assessment Program (FRAP), in cooperation with the California Department of Fish and Wildlife and the USDA Forest Service. In ArcMap, zonal statistics was used to calculate the majority vegetation life-form type per grid cell of the fishnet. The cells in the northwest area are majority conifer and hardwood, indicating a greater presence of forestry throughout. By contrast, the middle section - where Los Angeles County is located - contains cells that are majority urban and shrub.
 
 ```{r vegetation map, message=FALSE, warning=FALSE}
 # map the majority vegetation classification by fishnet cell
@@ -391,7 +391,7 @@ fires_fishnet_veg
 ### Feature: Mean Percent of Impervious Surface
 Impervious surfaces present concerns for wildfire, since they do not allow water to soak into the ground. If the surface cannot properly absorb water, it may be more difficult to diffuse fires or limit their spread. This is especially a concern in primarily highly-developed or industrial urban areas. As discussed above, majority urban areas contain a higher count of fire occurrences than most other vegetation land cover categories.
 
-An **Impervious Surfaces** (`IMPERV_SURFACE_PCT_MEAN`) variable was created based on impervious surface raster data from the National Land Cover Database (NLCD). NLCD represents urban impervious surfaces as a percentage of developed surface over 30-meter pixels. The raster file was brought into ArcMap, clipped to the study area, and zonal statistics was used to calculate the mean percent of impervious surface per grid cell. As expected, the map shows that areas of Los Angeles County, especially by the coast where lots of people live, have a higher percentage of impervious surface area.
+An **impervious surfaces** (`IMPERV_SURFACE_PCT_MEAN`) variable was created based on impervious surface raster data from the National Land Cover Database (NLCD). NLCD represents urban impervious surfaces as a percentage of developed surface over 30-meter pixels. The raster file was brought into ArcMap, clipped to the study area, and zonal statistics was used to calculate the mean percent of impervious surface per grid cell. As expected, the map shows that areas of Los Angeles County, especially by the coast where lots of people live, have a higher percentage of impervious surface area.
 
 ```{r impervious surface map, message=FALSE, warning=FALSE}
 
@@ -406,7 +406,7 @@ ggplot() +
 ```
 
 ### Feature: Mean Elevation
-Elevation affects fire behavior on multiple fronts: changing the level of exposure of an area from wind and precipitation, causing greater spread on steeper slopes, and increasing ignition potential. To create this **Elevation** (`ELEVATION_MEAN`) variable, a raster image of Digital Elevation Model of 15 arc-seconds resolution from the U.S. Geological Survey was brought into ArcMap. Zonal statistics as table was used to calculate the mean elevation per grid cell of the fishnet.
+Elevation affects fire behavior on multiple fronts: changing the level of exposure of an area from wind and precipitation, causing greater spread on steeper slopes, and increasing ignition potential. To create this **elevation** (`ELEVATION_MEAN`) variable, a raster image of Digital Elevation Model of 15 arc-seconds resolution from the U.S. Geological Survey was brought into ArcMap. Zonal statistics as table was used to calculate the mean elevation per grid cell of the fishnet.
 
 ```{r elevation map, message=FALSE, warning=FALSE}
 # map the mean elevation by fishnet cell
@@ -421,7 +421,7 @@ ggplot() +
 ```
 
 ## Engineering Weather Data Features
-Weather is also a major factor affecting the conditions for a wildfire ignition and future spread. To incorporate weather data into this analysis, the `{riem}` package was used to import data from the National Oceanic and Atmospheric Administration(NOAA)'s Automated Surface Observing Systems across southern California weather stations. Data was aggregated over the 2015-2019 five-year period, inverse distanced weighting interpolation was used to create a smooth weather surface, and the values were applied to each nearest fishnet cell.
+Weather is also a major factor affecting the conditions for a wildfire ignition and future spread. To incorporate weather data into this analysis, the `{riem}` package was used to import data from the National Oceanic and Atmospheric Administration (NOAA)'s Automated Surface Observing Systems across southern California weather stations. Data was aggregated over the 2015-2019 five-year period, inverse distanced weighting interpolation was used to create a smooth weather surface, and the values were applied to each nearest fishnet cell.
 
 The variables are annual averages of four weather phenomena - `precipitation`, `wind speed`, `temperature`, and `humidity` - and are joined with the fishnet. The maps below show each of these four weather variables.
 
@@ -587,7 +587,7 @@ fishnet_final_weatherfeatures %>%
 ## Additional Feature Engineering
 
 ### Feature: Tree Mortality Hazard Classification
-Areas with trees classified as being at higher risk of mortality may contribute to the level of wildfire risk - more dead trees means more fuel for fires to burn. CAL FIRE's Fire and Resource Assessment Program (FRAP) and the U.S. Forest Service have a classification system for areas of high tree mortality, which could be a decent predictor for wildfire risk. AFter loading the data source, the count of cells with at least one intersection of a tree "tier one hazard zone" is calculated to create the feature variable `n_tier1hazard_int`.
+Areas with trees classified as being at higher risk of mortality may contribute to the level of wildfire risk - more dead trees means more fuel for fires to burn. CAL FIRE's Fire and Resource Assessment Program (FRAP) and the U.S. Forest Service have a classification system for areas of high **tree mortality**, which could be a decent predictor for wildfire risk. After loading the data source, the count of cells with at least one intersection of a tree mortality "tier one hazard zone" is calculated to create the feature variable `n_tier1hazard_int`.
 
 ```{r tier1 tree mortality feature, message=FALSE, warning=FALSE, results='hide'}
 tier1hazard_treemortality <- st_read("https://opendata.arcgis.com/datasets/a71a85136b0b414ea734fdfbe3d7674a_0.geojson") %>% st_transform(st_crs(fishnet_final))
@@ -598,7 +598,7 @@ fishnet_final <- fishnet_final %>% mutate(n_tier1hazard_int = lengths(st_interse
 ```
 
 ### Feature: Distance to Nearest Electric Substation
-Given the presence of high voltage electricity coupled with flammable liquids and industrial equipment, internal malfunctions and damages to electric substations increase risk of fire eruption and spread. In 2018, electric company PG&E neglected maintenance of transmission infrastructure, which sparked the Camp Fire in Paradise, California that caused widespread structural damage and the deaths of over 80 people. Electric substations connect transmission lines, and contain high-voltage switches control electricity flow and magnitude. Given the high amount of electricity at these central hubs relative to the transmission lines, proximity to substations is explored as a fire risk feature.
+Given the presence of high voltage electricity coupled with flammable liquids and industrial equipment, internal malfunctions and damages to electric substations increase risk of fire eruption and spread. In 2018, electric company PG&E neglected maintenance of transmission infrastructure, which sparked the Camp Fire in Paradise, California that caused widespread structural damage and the deaths of over 80 people. Electric substations connect transmission lines, and contain high-voltage switches control electricity flow and magnitude. Given the high amount of electricity at these central hubs relative to the transmission lines, **proximity to electric substations** is explored as a fire risk feature.
 
 The point data for electric substations comes from the California State Geoportal, and the distance from each fishnet cell's centroid to the nearest substation is calculated (in meters). The map below illustrates this `dist_elec_substation` variable. The darker cells, indicating closer distance, are concentrated around the middle of the study area (which covers lots of Los Angeles County).
 
@@ -632,7 +632,7 @@ ggplot()+
 ```
 
 ## Feature: Distance to nearest CAL FIRE or Contract Facility
-The distance to the nearest CAL FIRE or affiliated contract fire facility is also explored as an additional feature. Similarly to the substations, the distance is calculated from each cell's centroid to the nearest facility and stored in a new variable called `dist_fire_facility`. The map below shows that areas in the southern part of the study area (mainly San Diego county) are closer, on average, to such facilities, where those in the more northern parts are further away.
+The **distance to the nearest CAL FIRE or affiliated contract fire facility** is also explored as an additional feature. Similarly to the substations, the distance is calculated from each cell's centroid to the nearest facility and stored in a new variable called `dist_fire_facility`. The map below shows that areas in the southern part of the study area (mainly San Diego county) are closer, on average, to such facilities, where those in the more northern parts are further away.
 
 ```{r dist to fire facility, message=FALSE, warning=FALSE, results='hide'}
 #read in facilities
@@ -667,9 +667,9 @@ After looking back at the outcome variable map of where the fire incidents occur
 
 ### Local Moran’s _I_
 
-The Local Moran’s _I_ statistic is calculated to explore local spatial autocorrelation of fire incidents. It explores spatial clustering by measuring how similar locations are to their immediate neighbors. High Local Moran’s I values indicate that there is evidence of local clustering.
+The Local Moran’s _I_ statistic is calculated to explore local spatial autocorrelation of fire incidents. It explores spatial clustering by measuring how similar locations are to their immediate neighbors. High Local Moran’s _I_ values indicate that there is evidence of local clustering.
 
-The results of the Local Moran’s I are plotted below, alongside the count of incidents (on the far left). Also mapped are the p-value and significant hotspots (cells with higher local incident counts than expected).
+The results of the Local Moran’s _I_ are plotted below, alongside the count of incidents (on the far left). Also mapped are the p-value and significant hotspots (cells with higher local incident counts than expected).
 
 Based on these maps, there is evidence of spatial clustering exists in the middle part of the study area - specifically, Los Angeles County and into Ventura.
 
@@ -730,7 +730,7 @@ fishnet_final$n_fires_int.isSig.dist <-as.numeric(fishnet_final$n_fires_int.isSi
 
 ```
 
-In order to develop a model that generalizes well, Local Moran’s _I_ is added as a feature in the final fishnet grid, using a dummy variable to indicate that a cell is part of a significant cluster. Then, the average nearest neighbor distance is measured from the centroid of each grid cell to its nearest significant cluster. The p-value chosen is 0.0000001 - the smaller the p-value, the more significant the clusters.
+In order to develop a model that generalizes well, **Local Moran’s _I_** is added as a feature in the final fishnet grid, using a dummy variable to indicate that a cell is part of a significant cluster. Then, the average nearest neighbor distance is measured from the centroid of each grid cell to its nearest significant cluster. The p-value chosen is 0.0000001 - the smaller the p-value, the more significant the clusters.
 
 ```{r nn distance to hotspots map, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 The distance to highly significant hotspots for fire incidents is shown in this map below.
@@ -749,7 +749,7 @@ fishnet_final$prev_fire <- as.numeric(fishnet_final$prev_fire)
 
 
 # Model Development and Testing
-A logistic regression (in the generalized linear model family) predicts the **probability** of an observation based on features of the model. Since we are predicting the probability that a fire will occur, it is well-suited for this case. To maximize the probability of the data observed, the variables included and engineered are iteratively swapped in and out to find the best possible fit. It turns out that all of the engineered features together help improve the model, so they are all included.
+A logistic regression (in the generalized linear model family) predicts the **_probability_** of an observation based on features of the model. Since we are predicting the probability that a fire will occur, it is well-suited for this case. To maximize the probability of the data observed, the variables included and engineered are iteratively swapped in and out to find the best possible fit. It turns out that all of the engineered features together help improve the model, so they are all included.
 
 The data is divided into training (70%) and testing (30%) sets, and the model runs on the training set. 
 
@@ -771,9 +771,9 @@ reg.binomial<- glm(prev_fire ~ .,
 ```
 
 ## Results and Goodness of Fit
-To ensure the generalizabiilty of the model, it needs to perform well on new data, and also predict relatively accurately across groups.
+To ensure the generalizabiilty of the model, it needs to both perform well on new data, and also predict relatively accurately across groups.
 
-The results of the model for the training data are included below. Note that the evaluation across groups will be explored later when looking at the model performance across the counties in the study area. 
+The results of the model for the training data are included below. Note that the evaluation across groups will be explored later when looking at the model performance across the five counties in the study area. 
 
 ### Results Summary
 
@@ -783,7 +783,7 @@ summ(reg.binomial)
 ```
 
 ### Confusion Matrix and Statistics
-The confusion matrix and its statistics for the regression are shown below. The matrix of 0s and 1s shows the comparison between the observed and predicted instances of fire occurrence at the 50% threshold. Sensitivity (the ability to predict true positive outcomes) here is ~46%, and specificity (the ability to predict true negative outcomes) is ~91%. This indicates that the model is better at predicting ares with an absence of a fire, and no fire occurred. 
+The confusion matrix and its statistics for the regression are shown below. The matrix of 0s and 1s shows the comparison between the observed and predicted instances of fire occurrence at the 50% threshold. Sensitivity (the ability to predict true positive outcomes) here is ~46%, and specificity (the ability to predict true negative outcomes) is ~91%. **This indicates that the model is better at predicting ares with an absence of a fire, and no fire occurred.** 
 
 ```{r reg testprobs, message=FALSE, warning=FALSE}
 testProbs <- data.frame(Outcome = as.factor(dataTest$prev_fire),
@@ -826,7 +826,7 @@ ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) +
 ### ROC Curve
 The Receiver Operating Characteristic (ROC) Curve for the model is shown below. This curve is a helpful goodness of fit indicator, while helping to visualize trade-offs between true positive and false positive metrics at each threshold from 0.01 to 1. A line going “over” the curve indicates a useful fit.
 
-The area under the curve (AUC) here is about .78, indicating a fairly useful fit. A reasonable AUC is between 0.5 and 1.
+The area under the curve (AUC) here is about 0.78, indicating a fairly useful fit. A reasonable AUC is between 0.5 and 1.
 
 ```{r testProbs ROC, message=FALSE, warning=FALSE}
 ggplot(testProbs, aes(d = as.numeric(Outcome), m = Probs)) +
@@ -871,7 +871,7 @@ print(cvFit.reg1) %>% kable(caption="Cross-Validation Results") %>% kable_stylin
 
 These cross-validation goodness of fit metrics are shown in the faceted plots below. These include the mean for area under the curve (“ROC” in this function’s output), sensitivity (“Sens”), and specificity (“Spec”) across all of the 100 folds.
 
-To evaluate the generalizability of the model, we look to the distributions for each of the goodness of fit metrics. Tighter distributions around the means are indicative of greater generalizability. The model generalize well for specificity, meaning that it correctly predict instances of no fire occurring most cases. On the other hand, they do not generalize as well for sensitivity, or the rate at which they correctly predict a fire occurrence. 
+To evaluate the generalizability of the model, we look to the distributions for each of the goodness of fit metrics. Tighter distributions around the means are indicative of greater generalizability. The cross-validated model generalizes well for specificity, meaning that it correctly predicts instances of no fire occurring most cases. On the other hand, it does not generalize as well for sensitivity, or the rate at which it correctly predicts a fire occurrence. 
 
 
 ```{r cv goodness of fit metrics plots, message=FALSE, warning=FALSE}
@@ -889,7 +889,7 @@ dplyr::select(cvFit.reg1$resample, -Resample) %>%
 
 ## Costs and Benefits of Identifying False Positives and Negatives
 
-Our model will not have perfect accuracy, and when determining the optimal threshold it’s important to consider the costs and benefits of inaccurately predicting data. Keep in mind that the ultimate use case for this data is to help inform where emergency supply kits are allocated. For the sake of this section, let’s make some approximations and assume the following:
+Our model will not have perfect accuracy, and when determining the optimal threshold it is important to consider the costs and benefits of inaccurately predicting data. **Keep in mind that the ultimate use case for this data is to help inform where emergency supply kits are allocated.** For the sake of this section, let’s make some approximations and assume the following:
 
 * Emergency supply kits cost $50
 * Predictions are being made at the cell-level
@@ -898,9 +898,9 @@ Our model will not have perfect accuracy, and when determining the optimal thres
 Type of prediction | What this means | Total cost | Total benefit
 ------------- | ------------- | ------------- | -------------
 True Positives | We predict a fire and there is one | Households in this tract are more likely to be prioritized for a kit, costing $50/household | These households will be better prepared for a future evacuation
-False Positives | We predict a fire and there is not one | **Households in this tract are more likely to be prioritized for a kit, costing $50/household** | No immediate benefit, although these kits do not expire after a year and these households will be better prepared for a future evacuation
+False Positives | We predict a fire and there is not one | Households in this tract are more likely to be prioritized for a kit, costing $50/household | No immediate benefit, although these kits do not expire after a year and these households will be better prepared for a future evacuation
 True Negatives | We do not predict a fire and there is not one | Households here are less likely to be prioritized for a kit | None
-False Negatives | We do not predict a fire and there is one | Households here are less likely to be prioritized for a kit, and **these households will be less prepared for a fire and at greater risk for evacuation** | None
+False Negatives | We do not predict a fire and there is one | Households here are less likely to be prioritized for a kit, and these households will be less prepared for a fire and at greater risk for evacuation | None
 
 As the table illustrates, optimizing the algorithm for more false positives will incur a greater financial cost and these supply kits may not go to immediate use. Whereas, optimizing for more false negatives is potentially leaving more households underprepared for an evacuation. For that reason, from a social and moral perspective, we believe that the ultimate cost of false positives is less than the cost of false negatives.
 
@@ -908,9 +908,10 @@ This is simply for illustrative purposes. As our final algorithm ends up extrapo
 
 
 ## Finding the Optimal Threshold
-In order to best optimize this model for use, identifying the threshold that provides the greatest accuracy is important. This is done by running the `iterateThresholds` function and looking at the results for all thresholds the table of thresholds 0.01 through 0.99. The optimal threshold in this case is 0.65.
+In order to best optimize this model for use, identifying the **threshold that provides the greatest accuracy** is important. This is done by running the `iterateThresholds` function and looking at the results for all thresholds the table of thresholds 0.01 through 0.99. The optimal threshold in this case is **0.65**.
 
 ```{r iterate threshold function, message=FALSE, warning=FALSE}
+# iterateThresholds function
 iterateThresholds <- function(data, group) {
    group <- enquo(group)
   x = .01
@@ -955,9 +956,9 @@ allThresholds
 
 ## How Does Ths Model Perform Across Counties?
 
-To assess how well this model performs across space, goodness of fit metrics are calculated across counties.
+To assess how well this model performs across space, goodness of fit metrics are calculated across the five counties.
 
-This visualization below shows the prediction outcomes grouped by county, at the optimal threshold identified (0.65). Accuracy rate is the highest for Los Angeles and San Diego counties. Los Angeles County's negative rate is the second-lowest (behind Ventura). Due to its greater accuracy - coupled with the known degree of population density - Los Angeles presents an compelling space to dive in further when developing our application for evacuation kit distribution. 
+This visualization below shows the prediction outcomes grouped by county, at the optimal threshold identified (0.65). Accuracy rates are the highest for Los Angeles and San Diego counties. Santa Barbara has the greatest false negative rate, a noticable difference when compared to the rate for the other four counties. Due to its greater accuracy - coupled with the known condition of population density in the urban area - **Los Angeles presents an compelling space to dive in further as we develop our application for evacuation kit distribution.** 
 
 ```{r counties - confusion matrix metrics, message=FALSE, warning=FALSE}
 
@@ -977,7 +978,7 @@ filter(testProbs.thresholds, Threshold == "0.65")%>%
 
 ```
 
-Here is an ROC plot showing the goodness of fit for each of the five counties evaluated. It measures trade-offs in trues positive and false positive rates for each threshold. Across all thresholds, this plot conveys that the model performs similarly for Orange and San Diego counties, the two furthest southern ones in the study area. This indicates that there may be some spatial processes at play at these local scales, or some additional features not captured in the model. The model does not perform as well for Santa Barbara (as indicated by the closer "hugging" of the coin-flip line, and even dipping below the line). This is consistent with the confusion matrix metrics shown in the bars above. It seems that this model is the most accurate when looking at Los Angeles and Ventura.
+Here is an ROC plot showing the goodness of fit for each of the five counties evaluated. It measures trade-offs in trues positive and false positive rates for each threshold. Across all thresholds, this plot conveys that the model performs similarly for Orange and San Diego counties, the two furthest southern ones in the study area. This indicates that there may be some spatial processes at play at these local scales, or some additional features not captured in the model. The model does not perform as well for Santa Barbara (as indicated by the closer "hugging" of the line, and even dipping below the line at some thresholds). This is consistent with the confusion matrix metrics shown in the bars above. It seems that this model is the most accurate when looking at Los Angeles and Ventura.
 
 ```{r counties ROC, message=FALSE, warning=FALSE}
 library(pROC)
@@ -993,7 +994,7 @@ ggplot(testProbs, aes(d = as.numeric(Outcome), m = Probs, group=COUNTY_NAME, col
 
 
 ## Preparing for the Use Case: From Grid Cells to Census Tracts
-Now that we have an optimal threshold, we predict out the probabilities and join them back to the fishnet using each cell's unique ID. Using this data set, we use areal weighting to make estimates from a set of source polygons (the grid cells) to the overlapping, congruent set of target polygons (census tracts). The census tract geometries are incorporated using the US Census Bureau's API. Finally, this dataset is exported to incorporate into the final algorithm and application development discussed in the next section.
+Now that we have an optimal threshold, we predict out the probabilities and join them back to the fishnet using each cell's unique ID. Using this data set, we use areal weighting to make estimates from a set of source polygons (the grid cells) to the overlapping, incongruent set of target polygons (census tracts). The census tract geometries are incorporated using the US Census Bureau's API. Finally, this dataset is exported to incorporate into the final algorithm and application development discussed in the next section.
 
 ```{r predict fishnet, eval=FALSE, message=FALSE, warning=FALSE}
 predict_fishnet <- 
@@ -1068,7 +1069,7 @@ tracts17 <- tracts17 %>% st_transform(st_crs(fishnet_final))
 ```
 
 ```{r message=FALSE, warning=FALSE}
-#Code - ran separately, but this shows the process
+#Code - ran separately, but this shows the process for areal-weighted interpolation
 #1. fishnet_final_preds_only <- fishnet_final_preds %>% dplyr::select(uniqueID, Probs, geometry, COUNTY_NAME)
 
 #2. interpolate_probs <-
@@ -1091,9 +1092,9 @@ tracts17 <- tracts17 %>% st_transform(st_crs(fishnet_final))
 We save the output from the fire probability model at the census tract level. These probabilities will be the "wildfire risk" component of the final algorithm powering our application for allocating emergency supply kits.
 
 ## Assessing Population Vulnerability
-Not only does our final algorithm take into account wildfire risk, but it also prioritizes census tracts to receive aid if their populations are more "vulnerable" to an emergency - like a wildfire. These populations may be less likely to be able to evacuate or less likely to be able to purchase/own an emergency supply kit on their own.
+Not only does our final algorithm take into account wildfire risk, but it also prioritizes census tracts to receive aid if their populations are more "vulnerable" to an emergency - like a wildfire. These populations may be less likely to be able to evacuate or less likely to be able to purchase or own an emergency supply kit on their own.
 
-We initially explored creating our own composite score for vulnerability, but decided to use [the reputable CDC Social Vulnerability Index](https://www.atsdr.cdc.gov/placeandhealth/svi/index.html). The SVI uses variables from the American Community Survey. Among its many uses, CDC recommends using the score to "allocate emergency preparedness funding by community need."
+We initially explored creating our own composite score for vulnerability, but decided to use [the reputable CDC Social Vulnerability Index](https://www.atsdr.cdc.gov/placeandhealth/svi/index.html). The CDC SVI uses variables from the US Census Bureau's American Community Survey. Among its many uses, CDC recommends using the score to "allocate emergency preparedness funding by community need."
 
 ```{r setup2}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
@@ -1115,13 +1116,14 @@ vulnIndex <- st_read("data/California-SVI/SVI2018_CALIFORNIA_tract.shp")%>%
 
 ```
 
-The Social Vulnerability Index is made up of 4 sub-themes: 
+The CDC Social Vulnerability Index is made up of 4 sub-themes: 
 
-```{r figure, fig.cap="SVI Vulnerability Index", out.width="80%"}
+```{r figure, fig.cap="CDC SVI Vulnerability Index", out.width="75%"}
 knitr::include_graphics("C:/Users/jenna/Documents/GitHub/MUSA508-final/images/SVI_image.jpg")
 ```
 
-We retrieved the data for the Social Vulnerability Index themes for each census tract in Los Angeles County. These plots show the tracts' percentile rankings for the sub-themes as well as the primary composite score.
+
+We retrieved the data for the Social Vulnerability Index themes for each census tract in Los Angeles County. These plots show the tracts' percentile rankings for the sub-themes as well as the primary composite score for social vulnerability.
 
 ```{r exploratoryPlots, message=FALSE, warning=FALSE, results='hide'}
 svi_theme1 <- ggplot(vulnIndex) +
@@ -1175,14 +1177,15 @@ svi_total <- ggplot(vulnIndex) +
   scale_fill_manual(values = palette5,
                     labels = qBr(vulnIndex %>% drop_na(RPL_THEMES), "RPL_THEMES", rnd=FALSE),
                     name = "Percentile") +
-  labs(title = "Social Vulnerability Index Composite", subtitle = "By Census Tract, Los Angeles County", caption="2018 CDC Social Vulnerability Index")+
+  labs(title = "CDC Social Vulnerability Index Composite", subtitle = "By Census Tract, Los Angeles County", caption="2018 CDC Social Vulnerability Index")+
   mapTheme() + 
   theme(plot.title = element_text(size=16))
 
 svi_total
+
 ```
 
-Although the SVI dataset includes population information for each tract, we want to be able to allocate one kit per household. We get household data from the American Community Survey and join it with our social vulnerability index information.
+Although the CDC SVI dataset includes population information for each tract, we want to be able to allocate one kit per household. We get household data from the American Community Survey and join it with our social vulnerability index information.
 
 ```{r getHousingUnitData, message=FALSE, warning=FALSE, results='hide'}
 projection <- "EPSG:6423"
@@ -1225,12 +1228,12 @@ finalDataSet <- vulnIndex %>% dplyr::left_join(fireProbabilities, left=TRUE)
 
 The `getPrioritizedCensusTracts()` function that can be used to invoke our algorithm and output a prioritized list of census tracts. The inputs for the function are:
 
-1. Total allocated budget (default: $250,000)
-2. Cost of the kit (default: $20)
-3. Percentage of households in each tract to distribute a kit (default: 100%)
-4. Amount of weight to give to fire risk score, vs. vulnerability index (default: 50%)
+1. **Total allocated budget** (default: $250,000)
+2. **Cost of the kit** (default: $20)
+3. **Percentage of households in each tract to distribute a kit** (default: 100%)
+4. **Amount of weight to give to fire risk, vs. social vulnerability** (default: 50%)
 
-The function returns a dataset of all the Los Angeles County tracts with columns added to indicate whether or not they should receive kits and how many they should receive.
+The function returns a dataset of all the Los Angeles County tracts with columns added to indicate whether or not they should be prioritized to receive kits, and how many they should receive.
 
 ```{r finalOutput, message=FALSE, warning=FALSE}
 
@@ -1274,7 +1277,7 @@ getPrioritizedCensusTracts <- function(budget = 250000, costOfKit = 20, pctOfTra
 
 ```
 
-The `getServedTractsPlot()` function uses the dataframe from `getPriotizedCensusTracts()` to generate a map of the tracts that can be served.
+The `getServedTractsPlot()` function uses the dataframe from `getPriotizedCensusTracts()` to generate the tracts that can be served.
 
 ```{r plot, message=FALSE, warning=FALSE}
 getServedTractsPlot <- function(df, ttl, st){
@@ -1282,6 +1285,7 @@ getServedTractsPlot <- function(df, ttl, st){
     geom_sf(data = st_union(df))+
     geom_sf(aes(fill = isReceivingKits),lwd = 0) +
     labs(subtitle = st, title = ttl) +
+    mapTheme() +
     theme(plot.title = element_text(size=14)) +
     theme(plot.subtitle = element_text(size=10)) +
     theme(legend.position = "none")
@@ -1291,7 +1295,7 @@ getServedTractsPlot <- function(df, ttl, st){
 ```
 
 
-We are now able to see exactly which tracts are served. Here are a few examples where we are varying the budget and then the percentage of households in a tract that we send a kit. Each time the algorithm prioritizes a different set of tracts.
+We are now able to see exactly which census tracts are served. Here are a few examples where we are varying the budget and then the percentage of households in a tract that we send a kit. In each instance, the algorithm prioritizes a different set of tracts.
 
 ```{r demoFinalAlgorithm, message=FALSE, warning=FALSE}
 
@@ -1299,23 +1303,23 @@ example1 <- getPrioritizedCensusTracts(budget = 250000, costOfKit = 20)
 example2 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20)
 example3 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20, pctOfTract = 0.5)
 
-example1.plot <- getServedTractsPlot(example1, "Tracts served (ex. 1)", "$250k and $20 kits")
-example2.plot <- getServedTractsPlot(example2, "Tracts served (ex. 2)","Increased budget to $2.5m")
-example3.plot <- getServedTractsPlot(example3, "Tracts served (ex. 3)","Sending kits to only 50% of households increases amount of served tracts")
+example1.plot <- getServedTractsPlot(example1, "Census Tracts Served (ex. 1)", "$250k and $20 kits")
+example2.plot <- getServedTractsPlot(example2, "Census Tracts Served (ex. 2)","Increased budget to $2.5m")
+example3.plot <- getServedTractsPlot(example3, "Census Tracts Served (ex. 3)","Sending kits to only 50% of households increases the number of served tracts")
 
 grid.arrange(example1.plot, example2.plot, example3.plot, nrow=2)
 ```
 
-We can also adjust the weights to see how different tracts would be served if we ONLY prioritized based off the vulnerability index or ONLY prioritized based off of the probability of a fire occurring.
+We can also adjust the weights to see how different tracts would be served if we ONLY prioritized based off the social vulnerability index or ONLY prioritized based off of the probability of a fire occurring.
 
-**As this graphic makes clear, by only using wildfire tracts or only using census data, a program manager would be serving very different and distant households.**
+**As these graphics makes clear, by only using wildfire tracts or only using census data, a program manager would be serving very different and distant households.**
 
 ```{r demoFinalAlgopt2}
 example4 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20, pctOfTract = 0.5, weight=0)
 example5 <- getPrioritizedCensusTracts(budget = 2500000, costOfKit = 20, pctOfTract = 0.5, weight=1)
 
-example4.plot <- getServedTractsPlot(example4, "Tracts served (ex. 4)","Only prioritizing on vulnerability index")
-example5.plot <- getServedTractsPlot(example5, "Tracts served (ex. 5)","Only prioritizing on fire probability")
+example4.plot <- getServedTractsPlot(example4, "Census Tracts Served (ex. 4)","Only prioritizing on vulnerability index")
+example5.plot <- getServedTractsPlot(example5, "Census Tracts Served (ex. 5)","Only prioritizing on fire probability")
 
 grid.arrange(example4.plot, example5.plot, nrow=1)
 ```
@@ -1327,12 +1331,12 @@ For our Los Angeles County program manager, we have made this algorithm availabl
 <iframe height="800" width="100%" frameborder="no" src="https://jeffstern.shinyapps.io/Emergency-Kit-Distribution/"> </iframe>
 
 # Discussion and Future Work
-We are excited for the potential of CalKit to strategically distribute emergency supply kits to the highest priority census tracts in Los Angeles. As seen above, our algorithm helps prioritize a very different group of households compared to just using wildfire risk or just using vulnerability index. The interactive application gives a program manager the flexibility to explore this data in more detail to make an informed decision about how to spend their budget.
+We are excited for the potential of CalKit to strategically distribute emergency supply kits to the highest priority census tracts in Los Angeles County. As seen above, our algorithm helps prioritize a very different group of households compared to just using wildfire risk or just using a social vulnerability index. The interactive application gives a program manager the flexibility to explore this data in more detail to make an informed decision about how to spend their budget.
 
-Reflecting on the fire probability algorithm, we believe that this is an instrumental part of the final product. We have used historical data to create a model that predicts with a high degree of accuracy where fires may occur. The model generalizes reasonably well to most other counties around Los Angeles. In future work, we’d want to continue to improve the generalizability of the model, especially for areas like Santa Barbara that did not generalize as well. We also want to dive deeper into nuances across census tracts, running spatial cross-validation at this level and examining how well the model generalizes for different types of tracts (eg. tracts of lower and higher socioeconomic status).
+Reflecting on the fire probability algorithm, we believe that this is an instrumental part of the final product. We have used historical data to create a model that predicts with a high degree of accuracy where fires may occur. The model generalizes reasonably well to most other counties around Los Angeles. In future work, we would want to continue to improve the generalizability of the model, especially for areas like Santa Barbara. We also want to dive deeper into nuances across census tracts, running spatial cross-validation at this level and examining how well the model generalizes for different types of tracts (eg. tracts of lower and higher socioeconomic status).
 
-We believe that CalKit can also be extended to serve other geographic areas, such as other parts of Los Angeles County and neighboring counties with decent generalizability. Perhaps even more exciting is to think about the use cases that it may have for allocating other types of emergency relief – such as financial aid or COVID-19 vaccines. 
+We believe that CalKit can also be extended to serve other geographic areas, such as neighboring counties with decent generalizability. Perhaps even more exciting is to think about the use cases that it may have for allocating other types of emergency relief – such as financial aid or COVID-19 vaccines. 
 
-In short, we believe that this is just the beginning. We hope that 508 Analytics and the CalKit application can help communities make data-informed decisions when preparing for - and responding to - both emergency disasters and everyday problems.
+In short, we believe that this is just the beginning. We hope that 508 Analytics and the CalKit application can help communities make data-informed decisions when preparing for – and responding to – both emergency disasters and everyday problems.
 
 — Jenna Epstein and Jeff Stern, December 2020
